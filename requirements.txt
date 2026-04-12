@@ -1,0 +1,6 @@
+MetaTrader5
+pandas
+requests
+python-dotenv
+catboost
+scikit-learn
