@@ -38,7 +38,8 @@ def setup_db():
         session_idx INTEGER,
         rel_volume REAL,
         xau_strength REAL,
-        usd_strength REAL
+        usd_strength REAL,
+        virtual_sl REAL
     )
     """
     cursor.execute(table_query)
@@ -62,14 +63,73 @@ def setup_db():
             cursor.execute(f"ALTER TABLE trades ADD COLUMN {col_name} {col_type}")
             print(f"Added column {col_name} to trades table.")
         except sqlite3.OperationalError:
-            # ถ้าคอลัมน์มีอยู่แล้วจะเกิด Error ข้ามได้เลย
             pass
+    
+    # [P4] Add virtual_sl column separately
+    try:
+        cursor.execute("ALTER TABLE trades ADD COLUMN virtual_sl REAL")
+        print("Added column virtual_sl to trades table.")
+    except sqlite3.OperationalError:
+        pass
     
     conn.commit()
     conn.close()
+    
+    # Initialize settings table
+    setup_settings_table()
+    
     print("Database check/upgrade completed using SQLite.")
 
-def log_trade(ticket, timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, rsi_m5, macd_diff, bb_position, ema_dist_m5, trade_hour, day_of_week, candle_pattern, volatility, profit, result, account_id, session_idx, rel_volume, xau_strength, usd_strength):
+def setup_settings_table():
+    """สร้างตารางสำหรับเก็บค่าสถานะของบอท (Bot Settings/State)"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bot_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error setting up settings table: {e}")
+
+def get_bot_setting(key, default=None):
+    """ดึงค่าจากตาราง bot_settings"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM bot_settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            # ลองแปลงเป็นชนิดข้อมูลที่เหมาะสม
+            val = row[0]
+            if val.lower() == 'true': return True
+            if val.lower() == 'false': return False
+            try:
+                if '.' in val: return float(val)
+                return int(val)
+            except:
+                return val
+        return default
+    except Exception:
+        return default
+
+def set_bot_setting(key, value):
+    """บันทึกค่าลงในตาราง bot_settings"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, str(value)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error setting bot setting: {e}")
+
+def log_trade(ticket, timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, rsi_m5, macd_diff, bb_position, ema_dist_m5, trade_hour, day_of_week, candle_pattern, volatility, profit, result, account_id, session_idx, rel_volume, xau_strength, usd_strength, virtual_sl=0.0):
     """บันทึกข้อมูลการเทรดลงฐานข้อมูล SQLite"""
     try:
         conn = get_connection()
@@ -77,10 +137,10 @@ def log_trade(ticket, timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone,
         
         # SQLite ใช้เครื่องหมาย ? แทน %s
         query = """
-        INSERT INTO trades (ticket, timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, rsi_m5, macd_diff, bb_position, ema_dist_m5, trade_hour, day_of_week, candle_pattern, volatility, profit, result, account_id, session_idx, rel_volume, xau_strength, usd_strength)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO trades (ticket, timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, rsi_m5, macd_diff, bb_position, ema_dist_m5, trade_hour, day_of_week, candle_pattern, volatility, profit, result, account_id, session_idx, rel_volume, xau_strength, usd_strength, virtual_sl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        cursor.execute(query, (int(ticket), timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, float(rsi_m5), float(macd_diff), bb_position, float(ema_dist_m5), int(trade_hour), int(day_of_week), candle_pattern, float(volatility), profit, result, int(account_id), int(session_idx), float(rel_volume), float(xau_strength), float(usd_strength)))
+        cursor.execute(query, (int(ticket), timestamp, symbol, m30_trend, h1_trend, smc_fvg, smc_zone, m5_signal, direction, float(rsi_m5), float(macd_diff), bb_position, float(ema_dist_m5), int(trade_hour), int(day_of_week), candle_pattern, float(volatility), profit, result, int(account_id), int(session_idx), float(rel_volume), float(xau_strength), float(usd_strength), float(virtual_sl)))
         conn.commit()
     except Exception as e:
         print(f"Error logging trade: {e}")
