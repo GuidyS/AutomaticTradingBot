@@ -48,7 +48,7 @@ _PROFILES = {
         "grid_sl_pips":       300,
         "grid_max_levels":    3,
         "grid_max_loss":      -50.0,
-        "max_scalp_orders":   2,
+        "max_scalp_orders":   3,
         "min_scalp_spacing":  50,
         # [P2] Basket TP/SL (USD)
         "grid_basket_tp":     4.0,
@@ -58,6 +58,9 @@ _PROFILES = {
         # [P2] ATR-Based Dynamic Spacing
         "grid_atr_multiplier": 1.0,
         "grid_min_spacing_pips": 50,
+        # Safety
+        "scalp_min_sl_pips":  50,
+        "scalp_struct_offset": 25,
     },
     "BTCUSDc": {
         "symbols":            ["BTCUSDc"],
@@ -80,7 +83,7 @@ _PROFILES = {
         "grid_sl_pips":       1500,
         "grid_max_levels":    3,
         "grid_max_loss":      -50.0,
-        "max_scalp_orders":   2,
+        "max_scalp_orders":   3,
         "min_scalp_spacing":  500,
         # [P2] Basket TP/SL (USD)
         "grid_basket_tp":     8.0,
@@ -90,6 +93,9 @@ _PROFILES = {
         # [P2] ATR-Based Dynamic Spacing
         "grid_atr_multiplier": 1.0,
         "grid_min_spacing_pips": 500,
+        # Safety
+        "scalp_min_sl_pips":  200,
+        "scalp_struct_offset": 100,
     },
 }
 
@@ -115,6 +121,8 @@ GRID_TP_PIPS        = _p["grid_tp_pips"]
 GRID_SL_PIPS        = _p["grid_sl_pips"]
 GRID_MAX_LEVELS     = _p["grid_max_levels"]
 GRID_MAX_TOTAL_LOSS = _p["grid_max_loss"]
+SCALP_MIN_SL_PIPS   = _p.get("scalp_min_sl_pips", 50)
+SCALP_STRUCTURAL_OFFSET = _p.get("scalp_struct_offset", 25)
 
 # ============================================================
 # ค่าคงที่ (ไม่เปลี่ยนตาม Symbol)
@@ -124,7 +132,7 @@ TIMEFRAME_ENTRY = 5
 USE_FIXED_PIPS  = False
 MAGIC_NUMBER    = 20250410
 ORDER_COMMENT   = "SMC_AI_v3"
-MAX_ORDERS_PER_SYMBOL = _p.get("max_scalp_orders", 2)
+MAX_ORDERS_PER_SYMBOL = _p.get("max_scalp_orders", 3)
 
 # ============================================================
 # [P1] PHASE 1 — Emergency Risk Reduction
@@ -139,6 +147,10 @@ ENABLE_NEWS_FILTER = False
 MAX_SPREAD         = 999
 CAT_MODEL_PATH = "catboost_model.pkl"
 RF_MODEL_PATH  = "rf_model.pkl"
+
+# ความถี่ของ AI และการสรุปผล
+AI_CHECK_INTERVAL_HOURS = 1
+PERFORMANCE_REPORT_INTERVAL_HOURS = 4
 
 # ============================================================
 # Grid Trading
@@ -167,7 +179,7 @@ BREAKOUT_DISTANCE_PIPS  = 30
 RECOVERY_MODE               = True
 RECOVERY_TRIGGER_PERCENT    = 10.0  # เริ่มกู้พอร์ตเมื่อติดลบเกิน 10% ของบาลานซ์
 RECOVERY_EXIT_PROFIT        = 0.50
-POST_TRADE_COOLDOWN_MINUTES = 5
+POST_TRADE_COOLDOWN_MINUTES = 2
 ENABLE_LOSS_SHAVING   = True
 MAX_OPPOSITE_SCALPS   = 1
 MIN_PROFIT_TO_SHAVE   = 1.0

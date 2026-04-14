@@ -47,6 +47,7 @@ class SelfLearningEA:
         # [P4] Smart Recovery State: {symbol: bool}
         self.recovery_active = {}
         self.global_recovery_active = False  # จะโหลดจริงใน init_mt5 หรือภายหลัง
+        self.last_log_time = {}              # สำหรับจำเวลาที่ Log ล่าสุด (กันบอทบ่นซ้ำ)
 
     # =========================================================
     # [P4] Win Rate Tracking Helpers
@@ -58,6 +59,14 @@ class SelfLearningEA:
                 'SCALP': {'wins': 0, 'losses': 0, 'gross_profit': 0.0, 'gross_loss': 0.0},
                 'GRID':  {'wins': 0, 'losses': 0, 'gross_profit': 0.0, 'gross_loss': 0.0},
             }
+
+    def log_throttled(self, msg, symbol=None, throttle_sec=60):
+        """[NEW] พิมพ์ Log แบบจำกัดความถี่ (กันบ่นซ้ำ) และขึ้นบรรทัดใหม่ให้สะอาด"""
+        key = (symbol, msg)
+        now = time.time()
+        if now - self.last_log_time.get(key, 0) > throttle_sec:
+            print(f"\n{msg}")  # ขึ้นบรรทัดใหม่เสมอเพื่อหลบบรรทัด \r
+            self.last_log_time[key] = now
 
     def _record_trade(self, symbol, trade_type, profit):
         """บันทึกผลการเทรดแยก SCALP/GRID"""
@@ -206,11 +215,12 @@ class SelfLearningEA:
             except Exception as e:
                 print(f"🔴 Telegram Exception: {e}")
 
-    def notify(self, message):
+    def notify(self, message, use_telegram=True):
         clean_msg = message.replace('*', '')
         print(f"\n📢 [NOTIFY]: {clean_msg}")
         self.send_line_message(message)
-        self.send_telegram_message(message)
+        if use_telegram:
+            self.send_telegram_message(message)
 
     def send_performance_report(self):
         """สรุปผลงาน 12h + win rate แยก SCALP/GRID"""
@@ -283,7 +293,7 @@ class SelfLearningEA:
             self.ai_in_progress[symbol] = True
             ai_view = self.get_ai_market_analysis(symbol, context_data)
             report = f"🤖 *[AI Market Insight - {symbol}]*\n\n{ai_view}"
-            self.notify(report)
+            self.notify(report, use_telegram=False) # AI Insights ไม่ส่ง Telegram
             print(f"✅ AI Analysis for {symbol} Completed in background.")
         except Exception as e:
             print(f"⚠️ Background AI Task Error ({symbol}): {e}")
@@ -551,8 +561,8 @@ class SelfLearningEA:
         session        = self.get_market_session()
         rel_vol        = row['rel_volume']
         xau_str, usd_str = self.get_currency_strength(symbol)
-        breakout_high  = df['high'].rolling(5).max().iloc[-1]
-        breakout_low   = df['low'].rolling(5).min().iloc[-1]
+        breakout_high  = df['high'].rolling(20).max().iloc[-1]
+        breakout_low   = df['low'].rolling(20).min().iloc[-1]
 
         return signals, row['rsi_14'], ema_dist, atr_val, pattern, volatility, day_of_week, macd_diff, bb_position, smc_fvg, smc_zone, session, rel_vol, xau_str, usd_str, fvg_entry, breakout_high, breakout_low
 
@@ -623,7 +633,7 @@ class SelfLearningEA:
     # Lot Calculation & Order Counting
     # =========================================================
 
-    def calculate_lot(self, symbol=None, atr_val=None, risk_percent=None, fixed_sl_pips=None):
+    def calculate_lot(self, symbol=None, atr_val=None, risk_percent=None, fixed_sl_pips=None, explicit_sl_dist=None):
         risk_mode = config.GRID_RISK_MODE if fixed_sl_pips else config.RISK_MODE
 
         if risk_mode == "FIXED":
@@ -635,7 +645,6 @@ class SelfLearningEA:
                 return config.FIXED_LOT
             balance = account.balance
             
-            # ใช้ risk_percent ที่ส่งมา หรือใช้ค่าตามโหมด (Scalp vs Grid)
             r_pct = risk_percent if risk_percent is not None else (
                 config.GRID_RISK_PERCENT if fixed_sl_pips else config.RISK_PERCENT
             )
@@ -646,20 +655,24 @@ class SelfLearningEA:
                 if symbol_info:
                     risk_amount = balance * (r_pct / 100.0)
                     
-                    # คำนวณระยะ SL: ถ้ามี fixed_sl_pips ให้ใช้ค่านั้น ถ้าไม่มีใช้ ATR
-                    if fixed_sl_pips:
+                    # ลำดับความสำคัญของระยะ SL: 
+                    # 1. explicit_sl_dist (ระยะห่างจากราคาจริงที่ใช้ส่งออเดอร์)
+                    # 2. fixed_sl_pips (สำหรับไม้ Grid)
+                    # 3. atr_val (สำหรับไม้ Scalp)
+                    if explicit_sl_dist and explicit_sl_dist > 0:
+                        sl_dist = explicit_sl_dist
+                    elif fixed_sl_pips:
                         pip_size = symbol_info.point * 10
                         sl_dist  = fixed_sl_pips * pip_size
                     elif atr_val:
                         sl_dist  = atr_val * s_cfg.get('atr_sl_mul', 0.8)
                     else:
-                        # กรณีไม่มีทั้งสองอย่าง ให้ใช้ Pip กลางๆ (เช่น 300 pips)
                         pip_size = symbol_info.point * 10
                         sl_dist  = 300 * pip_size
 
                     tick_size   = symbol_info.trade_tick_size
                     tick_value  = symbol_info.trade_tick_value
-                    if tick_size > 0 and tick_value > 0:
+                    if tick_size > 0 and tick_value > 0 and sl_dist > 0:
                         sl_ticks       = sl_dist / tick_size
                         calculated_lot = risk_amount / (sl_ticks * tick_value)
                         lot_step       = symbol_info.volume_step
@@ -709,19 +722,19 @@ class SelfLearningEA:
                     if p_dir != direction and p.magic == getattr(config, 'MAGIC_NUMBER', 999999):
                         opposite_count += 1
             if opposite_count >= getattr(config, 'MAX_OPPOSITE_SCALPS', 1):
-                print(f"⚠️ [{symbol}] Loss Shaving: จำกัดไม้สวนทาง ({opposite_count} ไม้)")
+                self.log_throttled(f"⚠️ [{symbol}] Loss Shaving: จำกัดไม้สวนทาง ({opposite_count} ไม้)", symbol)
                 return False
             m30_trend = self.get_m30_trend(symbol)
             if (direction == 'BUY' and m30_trend != 'UP') or (direction == 'SELL' and m30_trend != 'DOWN'):
-                print(f"⚠️ [{symbol}] Loss Shaving: เทรนด์ {m30_trend} ไม่สนับสนุน {direction}")
+                self.log_throttled(f"⚠️ [{symbol}] Loss Shaving: เทรนด์ {m30_trend} ไม่สนับสนุน {direction}", symbol)
                 return False
-            print(f"✅ [{symbol}] Loss Shaving: อนุญาตให้เปิด {direction}")
+            print(f"\n✅ [{symbol}] Loss Shaving: อนุญาตให้เปิด {direction}")
         else:
             if positions:
                 for p in positions:
                     existing_dir = 'BUY' if p.type == mt5.ORDER_TYPE_BUY else 'SELL'
                     if existing_dir != direction:
-                        print(f"⚠️ [{symbol}] GLOBAL SAFETY: สวนทางกับ {existing_dir} ที่เปิดอยู่")
+                        self.log_throttled(f"⚠️ [{symbol}] GLOBAL SAFETY: สวนทางกับ {existing_dir} ที่เปิดอยู่", symbol)
                         return False
 
         if positions:
@@ -729,7 +742,7 @@ class SelfLearningEA:
                 if p.magic in our_magics:
                     dist = abs(p.price_open - price)
                     if dist < min_dist:
-                        print(f"⚠️ [{symbol}] GLOBAL SAFETY: ใกล้ไม้เดิม ({dist/pip_size:.1f} pips)")
+                        self.log_throttled(f"⚠️ [{symbol}] GLOBAL SAFETY: ใกล้ไม้เดิม ({dist/pip_size:.1f} pips)", symbol)
                         return False
 
         orders = mt5.orders_get(symbol=symbol)
@@ -738,11 +751,11 @@ class SelfLearningEA:
                 if o.magic in our_magics:
                     pending_dir = 'BUY' if o.type in [mt5.ORDER_TYPE_BUY_LIMIT, mt5.ORDER_TYPE_BUY_STOP] else 'SELL'
                     if pending_dir != direction and not (is_scalp and getattr(config, 'ENABLE_LOSS_SHAVING', False)):
-                        print(f"⚠️ [{symbol}] GLOBAL SAFETY: สวนทางกับ Pending {pending_dir}")
+                        self.log_throttled(f"⚠️ [{symbol}] GLOBAL SAFETY: สวนทางกับ Pending {pending_dir}", symbol)
                         return False
                     dist = abs(o.price_open - price)
                     if dist < min_dist:
-                        print(f"⚠️ [{symbol}] GLOBAL SAFETY: ใกล้ Pending เดิมเกินไป ({dist/pip_size:.1f} pips)")
+                        self.log_throttled(f"⚠️ [{symbol}] GLOBAL SAFETY: ใกล้ Pending เดิมเกินไป ({dist/pip_size:.1f} pips)", symbol)
                         return False
         return True
 
@@ -763,17 +776,21 @@ class SelfLearningEA:
             ):
                 return None
 
-            lot  = self.calculate_lot(symbol, atr_val)
+            # 1. ข้อมูลพื้นฐาน
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
                 print(f"🔴 [{symbol}] ไม่สามารถดึง Tick ได้")
                 return None
+            
+            sym_info = mt5.symbol_info(symbol)
+            pip_size = sym_info.point * 10
+            s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
+            entry_price = pending_price if pending_type else (tick.ask if direction == 'BUY' else tick.bid)
 
-            s_cfg  = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
+            # 2. คำนวณ Multipliers (AI + Trend)
             ai_mul = self.symbol_tp_multipliers.get(symbol, 1.0)
-
-            m30_trend   = self.get_m30_trend(symbol)
-            h1_trend    = self.get_h1_trend(symbol)
+            m30_trend = self.get_m30_trend(symbol)
+            h1_trend  = self.get_h1_trend(symbol)
             trend_bonus = 1.0
             if direction == 'BUY':
                 if m30_trend == 'UP':   trend_bonus += 0.3
@@ -783,61 +800,68 @@ class SelfLearningEA:
                 if h1_trend  == 'DOWN': trend_bonus += 0.2
             final_mul = ai_mul * trend_bonus
 
+            # 3. คำนวณราคา SL (เลือกอันที่ปลอดภัยที่สุด ระหว่าง ATR/Fixed และ Structural)
+            final_sl = 0.0
             if getattr(config, 'USE_FIXED_PIPS', False):
-                sym_info = mt5.symbol_info(symbol)
-                if sym_info is None:
-                    return None
-                pip_size  = sym_info.point * 10
-                # [P4] ใช้ Structural SL หากมีการส่งค่ามา ถ้าไม่มีใช้ Fixed Pips ปกติ
-                if structural_sl and structural_sl > 0:
-                    sl = structural_sl
-                    sl_dist = abs(tick.ask - sl) if direction == 'BUY' else abs(tick.bid - sl)
-                else:
-                    sl_dist   = s_cfg.get('scalp_sl_pips', 40)  * pip_size
-                    sl = (tick.ask - sl_dist) if direction == 'BUY' else (tick.bid + sl_dist)
+                sl_pips = s_cfg.get('scalp_sl_pips', 40)
+                sl_dist = sl_pips * pip_size
+                calc_sl = (entry_price - sl_dist) if direction == 'BUY' else (entry_price + sl_dist)
                 
-                tp_dist   = (s_cfg.get('scalp_tp_pips', 150) * pip_size) * final_mul
+                # [P4] เลือกค่าที่ปลอดภัยที่สุด (ไกลที่สุด)
+                if structural_sl and structural_sl > 0:
+                    if direction == 'BUY': final_sl = min(calc_sl, structural_sl)
+                    else:                  final_sl = max(calc_sl, structural_sl)
+                else:
+                    final_sl = calc_sl
+                
+                tp_dist = (s_cfg.get('scalp_tp_pips', 150) * pip_size) * final_mul
                 mode_label = f"Dyn-Pips({final_mul:.1f}x)"
             else:
-                # [P4] ATR Mode พร้อม Structural SL
+                # ATR Mode
+                sl_dist = atr_val * s_cfg.get('atr_sl_mul', 0.8)
+                calc_sl = (entry_price - sl_dist) if direction == 'BUY' else (entry_price + sl_dist)
+
+                # [P4] เลือกค่าที่ปลอดภัยที่สุด (ไกลที่สุด)
                 if structural_sl and structural_sl > 0:
-                    sl = structural_sl
+                    if direction == 'BUY': final_sl = min(calc_sl, structural_sl)
+                    else:                  final_sl = max(calc_sl, structural_sl)
                 else:
-                    sl_dist = atr_val * s_cfg.get('atr_sl_mul', 0.8)
-                    sl = (tick.ask - sl_dist) if direction == 'BUY' else (tick.bid + sl_dist)
+                    final_sl = calc_sl
                 
-                tp_dist   = (atr_val * s_cfg.get('atr_tp_mul', 2.5)) * final_mul
+                tp_dist = (atr_val * s_cfg.get('atr_tp_mul', 2.5)) * final_mul
                 mode_label = f"Dyn-ATR({final_mul:.1f}x)"
 
+            # --- Safety Floor: บังคับระยะ SL ขั้นต่ำ ---
+            actual_sl_dist = abs(entry_price - final_sl)
+            min_sl_dist    = s_cfg.get('scalp_min_sl_pips', 30) * pip_size
+            if actual_sl_dist < min_sl_dist:
+                actual_sl_dist = min_sl_dist
+                final_sl = (entry_price - actual_sl_dist) if direction == 'BUY' else (entry_price + actual_sl_dist)
+
+            # 4. คำนวณขนาด Lot (Sync กับระยะ SL จริง)
+            lot = self.calculate_lot(symbol, explicit_sl_dist=actual_sl_dist)
+
+            # 5. คำนวณราคา TP
+            tp = (entry_price + tp_dist) if direction == 'BUY' else (entry_price - tp_dist)
+
+            if final_sl <= 0 or tp <= 0:
+                print(f"🔴 [{symbol}] SL/TP ไม่ถูกต้อง (SL={final_sl}, TP={tp})")
+                return None
+
+            # 6. เตรียมสั่งเทรด
+            order_type = None
             if pending_type:
                 order_type = pending_type
-                price = pending_price
-                sl = price - sl_dist if direction == 'BUY' else price + sl_dist
-                tp = price + tp_dist if direction == 'BUY' else price - tp_dist
-            elif direction == 'BUY':
-                price      = tick.ask
-                sl         = price - sl_dist
-                tp         = price + tp_dist
-                order_type = mt5.ORDER_TYPE_BUY
             else:
-                price      = tick.bid
-                sl         = price + sl_dist
-                tp         = price - tp_dist
-                order_type = mt5.ORDER_TYPE_SELL
-
-            if sl <= 0 or tp <= 0:
-                print(f"🔴 [{symbol}] SL/TP ไม่ถูกต้อง (SL={sl}, TP={tp})")
-                return None
+                order_type = mt5.ORDER_TYPE_BUY if direction == 'BUY' else mt5.ORDER_TYPE_SELL
 
             comment = f"{getattr(config, 'ORDER_COMMENT', 'SMC_AI')}_{direction[0]}#{order_index}"
             
             # [P4] Virtual (Hidden) SL Logic
-            real_sl = sl
-            broker_sl = sl
+            broker_sl = final_sl
             if getattr(config, 'ENABLE_VIRTUAL_SL', False) and not pending_type:
-                # วาง Emergency SL ไกลๆ ให้โบรกรมองไม่เห็นจุดจริง
                 e_dist = getattr(config, 'EMERGENCY_SL_PIPS', 300) * (mt5.symbol_info(symbol).point * 10)
-                broker_sl = (price - e_dist) if direction == 'BUY' else (price + e_dist)
+                broker_sl = (entry_price - e_dist) if direction == 'BUY' else (entry_price + e_dist)
                 mode_label += " (H)"
 
             request = {
@@ -845,10 +869,10 @@ class SelfLearningEA:
                 "symbol":       symbol,
                 "volume":       lot,
                 "type":         order_type,
-                "price":        float(price),
+                "price":        float(entry_price),
                 "sl":           float(broker_sl),
                 "tp":           float(tp),
-                "deviation":    20,
+                "deviation":    30,
                 "magic":        getattr(config, 'MAGIC_NUMBER', 999999),
                 "comment":      comment,
                 "type_time":    mt5.ORDER_TIME_SPECIFIED if pending_type else mt5.ORDER_TIME_GTC,
@@ -864,15 +888,23 @@ class SelfLearningEA:
                 max_orders = s_cfg.get('max_scalp_orders', 2)
                 msg = (f"🟢 *[{symbol}] เปิดออเดอร์ {direction}* #{order_index}/{max_orders}\n"
                        f"Lot: {lot} | Mode: {mode_label}\n"
-                       f"Ticket: `{result.order}` | SL: {sl:.5f} | TP: {tp:.5f}\n"
-                       f"Magic: {request['magic']} | Comment: {comment}")
-                self.notify(msg)
+                       f"Ticket: `{result.order}` | SL: {final_sl:.5f} | TP: {tp:.5f}\n"
+                       f"Dist: {actual_sl_dist/pip_size:.1f} pips")
+                
+                # [NOTIFICATION FILTER] ตรวจสอบว่าเป็นไม้เปิดทันที (Market) หรือไม้ค้าง (Pending)
+                is_market = not pending_type
+                self.notify(msg, use_telegram=is_market)
+                
+                # เก็บ Virtual SL ลง Memory
+                if getattr(config, 'ENABLE_VIRTUAL_SL', False) and not pending_type:
+                    self.virtual_sl_cache[result.order] = final_sl
+                    database.log_virtual_sl(result.order, final_sl)
+                
                 return result.order
             else:
-                retcode_msg = result.retcode if result else 'None'
-                print(f"🔴 [{symbol}] Trade failed: {retcode_msg}")
-                if result:
-                    print(f"   Response: {result}")
+                err_code = result.retcode if result else "No Result"
+                mt5_err  = mt5.last_error()
+                print(f"🔴 [{symbol}] Order Failed: {err_code} | {mt5_err}")
                 return None
         except Exception as e:
             print(f"🔴 [{symbol}] execute_trade error: {e}")
@@ -882,50 +914,94 @@ class SelfLearningEA:
     # Pending Orders
     # =========================================================
 
+    def is_price_near_existing_order(self, symbol, target_price, threshold_pips=10):
+        """[NEW] ตรวจสอบว่ามี Position หรือ Pending Order อยู่ใกล้ระดับราคานั้นแล้วหรือยัง"""
+        sym_info = mt5.symbol_info(symbol)
+        if not sym_info: return False
+        pip_size = sym_info.point * 10
+        threshold_dist = threshold_pips * pip_size
+
+        # 1. เช็ค Positions
+        positions = mt5.positions_get(symbol=symbol)
+        if positions:
+            for p in positions:
+                if p.magic == getattr(config, 'MAGIC_NUMBER', 999999):
+                    if abs(p.price_open - target_price) < threshold_dist:
+                        return True
+        
+        # 2. เช็ค Pending Orders
+        orders = mt5.orders_get(symbol=symbol)
+        if orders:
+            for o in orders:
+                if o.magic == getattr(config, 'MAGIC_NUMBER', 999999):
+                    if abs(o.price_open - target_price) < threshold_dist:
+                        return True
+        return False
+
     def place_pending_orders(self, symbol, signals, atr_val, fvg_type, fvg_entry, b_high, b_low):
         if not getattr(config, 'ENABLE_PENDING_ORDERS', False):
             return
+        
+        # [P4] นับยอดรวมทั้งหมด (Open + Pending) เพื่อคุมความเสี่ยงรวม
+        open_count    = self.count_open_orders(symbol)
         pending_count = self.count_pending_orders(symbol)
-        max_p = getattr(config, 'MAX_PENDING_PER_SYMBOL', 2)
-
+        total_count   = open_count + pending_count
+        
+        s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
+        max_total = s_cfg.get('max_scalp_orders', 2)
+        max_p     = getattr(config, 'MAX_PENDING_PER_SYMBOL', 2)
+        
+        #--- Cleanup ไกลมากๆ ---
         orders = mt5.orders_get(symbol=symbol)
         if orders:
             tick     = mt5.symbol_info_tick(symbol)
-            pip_size = mt5.symbol_info(symbol).point * 10
+            pip_size = sym_info.point * 10 if (sym_info := mt5.symbol_info(symbol)) else 0.0001
             for o in orders:
                 if o.magic == getattr(config, 'MAGIC_NUMBER', 999999):
                     dist = abs(o.price_open - tick.bid) / pip_size
-                    if dist > 300:
+                    if dist > 400: # ไกลเกิน 400 pips ลบทิ้ง
                         mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": o.ticket})
                         pending_count -= 1
+                        total_count -= 1
 
-        if pending_count >= max_p:
+        if total_count >= max_total or pending_count >= max_p:
             return
 
         tick     = mt5.symbol_info_tick(symbol)
-        pip_size = mt5.symbol_info(symbol).point * 10
+        pip_size = sym_info.point * 10 if (sym_info := mt5.symbol_info(symbol)) else 0.0001
         dist_pips = getattr(config, 'BREAKOUT_DISTANCE_PIPS', 30)
 
-        if fvg_entry > 0 and pending_count < max_p:
-            if fvg_type == "Bullish" and fvg_entry < tick.ask:
-                self.execute_trade(symbol, 'BUY',  atr_val, order_index=91,
-                                   pending_type=mt5.ORDER_TYPE_BUY_LIMIT,  pending_price=fvg_entry)
-            elif fvg_type == "Bearish" and fvg_entry > tick.bid:
-                self.execute_trade(symbol, 'SELL', atr_val, order_index=91,
-                                   pending_type=mt5.ORDER_TYPE_SELL_LIMIT, pending_price=fvg_entry)
+        # 1. FVG Entry (Limit Order)
+        if fvg_entry > 0 and total_count < max_total and pending_count < max_p:
+            # เช็คว่ามีออเดอร์ใกล้ราคานี้แล้วหรือยัง
+            if not self.is_price_near_existing_order(symbol, fvg_entry, threshold_pips=15):
+                if fvg_type == "Bullish" and fvg_entry < tick.ask:
+                    self.execute_trade(symbol, 'BUY',  atr_val, order_index=total_count+1,
+                                       pending_type=mt5.ORDER_TYPE_BUY_LIMIT,  pending_price=fvg_entry)
+                    total_count += 1
+                    pending_count += 1
+                elif fvg_type == "Bearish" and fvg_entry > tick.bid:
+                    self.execute_trade(symbol, 'SELL', atr_val, order_index=total_count+1,
+                                       pending_type=mt5.ORDER_TYPE_SELL_LIMIT, pending_price=fvg_entry)
+                    total_count += 1
+                    pending_count += 1
 
-        pending_count = self.count_pending_orders(symbol)
-        if pending_count < max_p:
+        # 2. Breakout Entry (Stop Order)
+        if total_count < max_total and pending_count < max_p:
             if 'BUY' in signals:
                 price = b_high + (dist_pips * pip_size)
-                if price > tick.ask:
-                    self.execute_trade(symbol, 'BUY',  atr_val, order_index=92,
+                if price > tick.ask and not self.is_price_near_existing_order(symbol, price, threshold_pips=20):
+                    self.execute_trade(symbol, 'BUY',  atr_val, order_index=total_count+1,
                                        pending_type=mt5.ORDER_TYPE_BUY_STOP,  pending_price=price)
+                    total_count += 1
+                    pending_count += 1
             elif 'SELL' in signals:
                 price = b_low - (dist_pips * pip_size)
-                if price < tick.bid:
-                    self.execute_trade(symbol, 'SELL', atr_val, order_index=92,
+                if price < tick.bid and not self.is_price_near_existing_order(symbol, price, threshold_pips=20):
+                    self.execute_trade(symbol, 'SELL', atr_val, order_index=total_count+1,
                                        pending_type=mt5.ORDER_TYPE_SELL_STOP, pending_price=price)
+                    total_count += 1
+                    pending_count += 1
 
     # =========================================================
     # Trailing Stop
@@ -1647,8 +1723,8 @@ class SelfLearningEA:
                         # --- [P4] Calculate Structural SL ---
                         sym_info = mt5.symbol_info(symbol)
                         pip_size = sym_info.point * 10 if sym_info else 0.0001
-                        # วาง SL ไว้ห่างจาก High/Low ล่าสุด 5-10 pips
-                        offset = 10 * pip_size
+                        # วาง SL ไว้ห่างจาก High/Low ล่าสุด (Buffer)
+                        offset = s_cfg.get('scalp_struct_offset', 10) * pip_size
                         st_sl = (b_low - offset) if direction == 'BUY' else (b_high + offset)
 
                         print(f"\n[{symbol}] 🎯 Scalp Signal: {direction} #{order_idx}/{max_orders} "

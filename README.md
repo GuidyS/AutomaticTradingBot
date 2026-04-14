@@ -1,4 +1,4 @@
-# Self-Learning Scalping EA (MT5 + Machine Learning)
+# Self-Learning Scalping EA (MT5 + Machine Learning) - v3.0
 
 โปรเจกต์นี้คือ Expert Advisor (EA) สำหรับเทรด Forex (เช่น คู่เงิน XAUUSD) ที่ทำงานร่วมกับ MetaTrader 5 และใช้ Machine Learning (Ensemble: CatBoost + Random Forest) เพื่อเรียนรู้ข้อผิดพลาด และช่วยตัดสินใจเมื่อเกิดสัญญาณเข้าเทรดที่ขัดแย้งกัน
 
@@ -58,13 +58,13 @@
 #### ตั้งค่าระบบเทรดตามเหมาะสม:
 | ตัวแปร | คำอธิบาย | ค่าแนะนำ |
 |--------|----------|---------|
-| `SYMBOLS` | คู่เงินที่เทรด | `"XAUUSDc"` |
-| `RISK_MODE` | `"FIXED"` หรือ `"PERCENT"` | `"PERCENT"` |
-| `FIXED_LOT` | Lot ฐาน (เมื่อใช้ FIXED) | `0.01` |
-| `RISK_PERCENT` | % ความเสี่ยงต่อออเดอร์ | `1.0` |
-| `MAX_ORDERS_PER_SYMBOL` | จำนวนออเดอร์สูงสุดต่อ Symbol | `3` |
-| `ATR_SL_MULTIPLIER` | ระยะ Stop Loss (คูณ ATR) | `0.8` |
-| `ATR_TP_MULTIPLIER` | ระยะ Take Profit (คูณ ATR) | `1.0` |
+| `SYMBOLS` | คู่เงินที่เทรด | `["XAUUSDc", "BTCUSDc"]` |
+| `RISK_MODE` | `"PERCENT"` | `"PERCENT"` |
+| `RISK_PERCENT` | % ความเสี่ยงต่อออเดอร์ Scalp | `0.5` |
+| `GRID_RISK_PERCENT` | % ความเสี่ยงต่อออเดอร์ Grid | `0.1` |
+| `MAX_ORDERS_PER_SYMBOL` | จำนวนไม้สูงสุดรวม (Position + Pending) | `3` |
+| `SCALP_MIN_SL_PIPS` | ระยะ SL ขั้นต่ำเพื่อความปลอดภัย ( floor ) | `50` |
+| `POST_TRADE_COOLDOWN` | ระยะเวลารอหลังจบไม้ (นาที) | `2` |
 
 ### 3. การเตรียมโปรแกรม MetaTrader 5 (MT5)
 1. เปิดโปรแกรม MT5 เข้าสู่ระบบพอร์ตเทรดของคุณให้เรียบร้อย (ทดสอบบัญชี Demo ก่อนเสมอ)
@@ -90,25 +90,23 @@ python trainer.py
 
 ---
 
-## 📊 สรุปการปรับปรุง (v2.0)
+## 📊 สรุปการปรับปรุง (v3.0 - Latest)
 
-### 🔒 Security Improvements
-- ✅ ย้าย Credentials ไปใช้ Environment Variables (`.env`)
-- ✅ แก้ SQL Injection vulnerability ใน `trainer.py`
-- ✅ เพิ่ม `.gitignore` ป้องกัน commit ไฟล์ลับ
-- ✅ สร้าง `.env.example` template
+### 🛡️ Smart Safety & Risk Management
+- ✅ **Dynamic Structural SL:** เพิ่ม Lookback เป็น 20 แท่ง และระบบเลือกค่า SL ที่ปลอดภัยที่สุด ( ATR vs Structural )
+- ✅ **Order Spam Protection:** ระบบ `Price Closeness Check` ป้องกันการเปิดออเดอร์ซ้ำที่ราคาเดิมอัตโนมัติ
+- ✅ **Global Order limit:** คุมยอดรวมระหว่าง (ไม้ที่เปิดรันอยู่ + ไม้ที่วางค้าง) ให้ไม่เกินขีดจำกัด
+- ✅ **Reduced Cooldown:** ปรับลดเวลาพักหลังจบไม้เหลือ 2 นาที เพื่อเพิ่มประสิทธิภาพ
 
-### 🐛 Bug Fixes
-- ✅ แก้ RSI logic ขัดแย้งกันเอง (BUY/SELL ช่วงซ้อนทับ)
-- ✅ แก้ FVG Detection loop (IndexError risk)
-- ✅ แก้ ALTER TABLE syntax error ใน `database.py`
-- ✅ เพิ่ม Error Handling ครอบคลุมจุดสำคัญ
+### 📡 Notification & UI Refinement
+- ✅ **Telegram Filtering:** ระบบเลือกส่งเฉพาะไม้ที่เปิดจริง, ผลกำไร/ขาดทุน และสรุปผล (งดส่ง AI Insights กวนใจ)
+- ✅ **Dynamic Indexing:** แสดงลำดับออเดอร์จริงใน Log เช่น #1/3, #2/3 เพื่อความชัดเจน
+- ✅ **Symbol-Specific Safety:** แยกค่าความปลอดภัย (Min SL / Offset) ตามรายคู่เงิน ( Gold / BTC )
 
-### 🛡️ Error Handling
-- ✅ เพิ่ม try-catch ใน `execute_trade()`
-- ✅ เพิ่ม try-catch ใน `manage_trailing_stop()`
-- ✅ เพิ่ม try-catch ใน `check_and_update_db()`
-- ✅ Validate SL/TP prices ก่อนส่งออเดอร์
+### 🐛 Bug Fixes & Stability
+- ✅ แก้ Bug การ Hardcode ลำดับออเดอร์ในส่วนของ Pending Orders
+- ✅ แก้ Bug การเปิดไม้รัวๆ (Spam) เมื่อราคาแกว่งตัวในโซน FVG
+- ✅ ปรับปรุงความเสถียรของระบบ Virtual SL Sync กับฐานข้อมูล
 
 ---
 
