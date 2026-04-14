@@ -50,7 +50,7 @@ _PROFILES = {
         "grid_atr_multiplier":  1.0,
         "grid_min_spacing_pips": 50,
         # Scalp control
-        "max_scalp_orders":  2,
+        "max_scalp_orders":  5,
         "min_scalp_spacing": 50,
         # [H] Auto-Hedge
         "hedge_trigger_pips": 80,
@@ -86,7 +86,7 @@ _PROFILES = {
         "grid_atr_multiplier":  1.0,
         "grid_min_spacing_pips": 500,
         # Scalp control
-        "max_scalp_orders":  2,
+        "max_scalp_orders":  5,
         "min_scalp_spacing": 500,
         # [H] Auto-Hedge
         "hedge_trigger_pips": 400,
@@ -102,9 +102,10 @@ else:
 # ============================================================
 # Core Settings
 # ============================================================
-MAGIC_NUMBER     = 20250410
-ORDER_COMMENT    = "SMC_AI_v4"
-ATR_PERIOD       = 14
+MAGIC_NUMBER           = 20250410
+ORDER_COMMENT          = "SMC_AI_v4"
+ATR_PERIOD             = 14
+ENABLE_TRAILING_STOP   = False  # 🛡️ Trailing stop cuts winners short — OFF by default
 
 # Risk
 RISK_MODE    = "PERCENT"

@@ -1128,7 +1128,8 @@ class SelfLearningEA:
                         atr_t= df_t.iloc[-1]['atr']
                         for pos in our_pos:
                             if pos.magic == s_magic:
-                                self.manage_trailing_stop(symbol, pos, atr_t)
+                                if getattr(config,'ENABLE_TRAILING_STOP',False):
+                                    self.manage_trailing_stop(symbol, pos, atr_t)
                                 # [H] Auto-Hedge check
                                 if getattr(config,'ENABLE_HEDGE',True):
                                     self.check_and_trigger_hedge(symbol, pos, atr_t)
