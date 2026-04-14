@@ -175,8 +175,7 @@ def is_deal_notified(ticket):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        # สร้างตารางถ้ายังไม่มี (sqlite_master)
-        cursor.execute("CREATE TABLE IF NOT EXISTS notified_deals (ticket BIGINT PRIMARY KEY)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS notified_deals (ticket BIGINT PRIMARY KEY, created_at TEXT)")
         cursor.execute("SELECT 1 FROM notified_deals WHERE ticket = ?", (int(ticket),))
         res = cursor.fetchone()
         return res is not None
@@ -191,8 +190,16 @@ def mark_deal_as_notified(ticket):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS notified_deals (ticket BIGINT PRIMARY KEY)")
-        cursor.execute("INSERT OR IGNORE INTO notified_deals (ticket) VALUES (?)", (int(ticket),))
+        cursor.execute("CREATE TABLE IF NOT EXISTS notified_deals (ticket BIGINT PRIMARY KEY, created_at TEXT)")
+        # Migrate old schema (no created_at column) if needed
+        try:
+            cursor.execute("ALTER TABLE notified_deals ADD COLUMN created_at TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        cursor.execute("INSERT OR IGNORE INTO notified_deals (ticket, created_at) VALUES (?, datetime('now'))",
+                       (int(ticket),))
+        # Prune entries older than 30 days on every insert
+        cursor.execute("DELETE FROM notified_deals WHERE created_at < datetime('now', '-30 days')")
         conn.commit()
     except Exception as e:
         print(f"Error marking deal as notified: {e}")
