@@ -244,3 +244,31 @@ def get_performance_summary(hours=12):
     finally:
         if 'conn' in locals():
             conn.close()
+
+def get_daily_pnl(today=None):
+    """🛡️ Get today's PnL (from midnight local time)."""
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Get all closed trades from today (midnight to now)
+        query = """
+        SELECT SUM(profit) as net_profit
+        FROM trades
+        WHERE result != 'PENDING'
+          AND date(timestamp) >= date(?)
+        """
+        cursor.execute(query, (today,))
+        row = cursor.fetchone()
+        
+        if row and row[0] is not None:
+            return float(row[0])
+        return 0.0
+    except Exception as e:
+        print(f"Error getting daily PnL: {e}")
+        return 0.0
+    finally:
+        if 'conn' in locals():
+            conn.close()

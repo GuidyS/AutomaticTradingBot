@@ -1,4 +1,4 @@
-# config.py — v4 Anti-Loss Edition
+# config.py — v4 Intraday Edition (XAUUSD Only)
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -14,84 +14,51 @@ DB_CONFIG = {
     'database': os.getenv('DB_NAME', 'forex_ea')
 }
 
-ACTIVE_SYMBOL = ["BTCUSDc", "XAUUSDc"]
+# 🎯 โฟกัสเฉพาะทองคำ
+ACTIVE_SYMBOL = ["XAUUSDc"]
 
 # ============================================================
-# Symbol Profiles
+# Symbol Profiles (Intraday M15 Focus)
 # ============================================================
 _PROFILES = {
     "XAUUSDc": {
         "symbols":           ["XAUUSDc"],
         "strength_pairs":    ["EURUSD","GBPUSD","USDJPY","AUDUSD","XAUUSDc"],
-        # Scalp
-        "scalp_tp_pips":     150,
-        "scalp_sl_pips":     40,
-        "scalp_min_sl_pips": 50,
-        "scalp_struct_offset": 25,
+        # Intraday
+        "scalp_tp_pips":     500,   # เป้ากำไร 500 จุด (5$ ทอง)
+        "scalp_sl_pips":     300,   # SL 300 จุด (3$ ทอง)
+        "scalp_min_sl_pips": 150,   # SL ขั้นต่ำ 150 จุด กันโดนสวิงหลอก
+        "scalp_struct_offset": 50,
         # ATR
-        "atr_sl_mul":        0.8,
-        "atr_tp_mul":        2.5,
+        "atr_sl_mul":        1.5,
+        "atr_tp_mul":        3.0,
         # Break-Even / Trail
-        "be_activation_pips": 100,
-        "be_offset_pips":     10,
-        "trail_activation":   0.8,
-        "trail_step":         0.3,
+        "be_activation_pips": 250,  # กันทุนเมื่อกำไร 2.5$
+        "be_offset_pips":     30,
+        "trail_activation":   1.2,
+        "trail_step":         0.5,
         # Grid
         "grid_symbol":       "XAUUSDc",
         "grid_lot":          0.01,
-        "grid_spacing_pips": 100,
-        "grid_tp_pips":      500,
-        "grid_sl_pips":      300,
+        "grid_spacing_pips": 300,
+        "grid_tp_pips":      800,
+        "grid_sl_pips":      500,
         "grid_max_levels":   3,
         "grid_max_loss":    -50.0,
-        "grid_basket_tp":    4.0,
-        "grid_basket_sl":   -6.0,
+        "grid_basket_tp":    5.0,
+        "grid_basket_sl":   -10.0,
         "grid_symmetric_max_levels": 2,
-        "grid_atr_multiplier":  1.0,
-        "grid_min_spacing_pips": 50,
-        # Scalp control
-        "max_scalp_orders":  5,
+        "grid_atr_multiplier":  1.5,
+        "grid_min_spacing_pips": 150,
+        # Layer control
+        "max_scalp_orders":  3,
         "min_scalp_spacing": 50,
-        # [H] Auto-Hedge
-        "hedge_trigger_pips": 80,
-        "hedge_basket_tp":    3.0,
-    },
-    "BTCUSDc": {
-        "symbols":           ["BTCUSDc"],
-        "strength_pairs":    ["EURUSD","GBPUSD","USDJPY","AUDUSD"],
-        # Scalp
-        "scalp_tp_pips":     1000,
-        "scalp_sl_pips":     400,
-        "scalp_min_sl_pips": 200,
-        "scalp_struct_offset": 100,
-        # ATR
-        "atr_sl_mul":        0.8,
-        "atr_tp_mul":        2.5,
-        # Break-Even / Trail
-        "be_activation_pips": 600,
-        "be_offset_pips":     100,
-        "trail_activation":   0.8,
-        "trail_step":         0.3,
-        # Grid
-        "grid_symbol":       "BTCUSDc",
-        "grid_lot":          0.01,
-        "grid_spacing_pips": 500,
-        "grid_tp_pips":      1500,
-        "grid_sl_pips":      1500,
-        "grid_max_levels":   3,
-        "grid_max_loss":    -50.0,
-        "grid_basket_tp":    8.0,
-        "grid_basket_sl":   -15.0,
-        "grid_symmetric_max_levels": 1,
-        "grid_atr_multiplier":  1.0,
-        "grid_min_spacing_pips": 500,
-        # Scalp control
-        "max_scalp_orders":  5,
-        "min_scalp_spacing": 500,
-        # [H] Auto-Hedge
+        "layer_basket_tp_per_order_usd": 5.0,
+        "max_spread_pips":   40,
+        # Auto-Hedge
         "hedge_trigger_pips": 400,
-        "hedge_basket_tp":   10.0,
-    },
+        "hedge_basket_tp":    5.0,
+    }
 }
 
 if isinstance(ACTIVE_SYMBOL, list) and len(ACTIVE_SYMBOL) > 0:
@@ -102,79 +69,83 @@ else:
 # ============================================================
 # Core Settings
 # ============================================================
-MAGIC_NUMBER           = 20250410
-ORDER_COMMENT          = "SMC_AI_v4"
+MAGIC_NUMBER           = 20250415
+ORDER_COMMENT          = "Intraday_V4"
 ATR_PERIOD             = 14
-ENABLE_TRAILING_STOP   = False  # 🛡️ Trailing stop cuts winners short — OFF by default
+# -------------------------------------------------------------
+# MONEY MANAGEMENT (7-Step Consolidation Rule)
+# -------------------------------------------------------------
+RISK_MODE              = "DIVISOR"   # Options: "FIXED", "PERCENT", "DIVISOR"
+LOT_DIVISOR            = 10000       # Lot size = Balance / 10000
+RISK_PERCENT           = 1.0         # Used only if RISK_MODE = "PERCENT"
+FIXED_LOT              = 0.01        # Used only if RISK_MODE = "FIXED"
+MAX_LOT                = 2.0
+MAX_DAILY_LOSS_USD     = 200.0
 
-# Risk
-RISK_MODE    = "PERCENT"
-FIXED_LOT    = 0.01
-RISK_PERCENT = 0.5
-MAX_LOT      = 0.5
+# [ICT] 7-Step Consolidation Strategy
+ICT_STRATEGY_ENABLED   = True
+CONSOLIDATION_TP_MULTS = [0.5, 0.75, 1.0] # Fibo expansion multipliers vs BoxSize
+ICT_RECOVERY_INTERVAL  = 900             # Notification throttle (15 min)
+MAX_PORTFOLIO_RISK_USD = 500.0
+MAX_SPREAD_PIPS        = 0
+ENABLE_WEEKEND_CLOSE   = True
 
-# ============================================================
-# [E] Entry Filter Thresholds
-# ============================================================
-SCALP_REQUIRE_H1_CONFIRM = True
+# [E] Entry Filter Thresholds (Intraday)
+SCALP_REQUIRE_H1_CONFIRM = True   # บังคับเทรดตามเทรนด์ H1 เสมอ
 SCALP_REQUIRE_SMC_ZONE   = True
-SCALP_BUY_RSI_MIN        = 45
+SCALP_BUY_RSI_MIN        = 40
 SCALP_BUY_RSI_MAX        = 65
 SCALP_SELL_RSI_MIN       = 35
-SCALP_SELL_RSI_MAX       = 55
-MIN_RR_RATIO             = 1.5
+SCALP_SELL_RSI_MAX       = 60
+MIN_RR_RATIO             = 1.2    # ปรับเหลือ 1.2 จะเข้าออเดอร์ง่ายขึ้น
+ENABLE_MULTI_TP          = True   # เปิดระบบ TP 1, 2, 3
+MULTI_TP_RATIOS          = [0.4, 0.3, 0.3]  # แบ่ง Lot 40% / 30% / 30%
+MULTI_TP_RR_LEVELS       = [0.8, 1.5, 3.0]  # ระดับ TP ในมุมมอง Risk:Reward (TP1, TP2, TP3)
 
-# ============================================================
-# [H] Auto-Hedge
-# ============================================================
-ENABLE_HEDGE = True
+# [AI] Fully AI-Driven Trading
+ENABLE_AI_TRADING_MODE   = True
+AI_PROVIDER              = "GEMINI"
+AI_API_KEY               = os.getenv('GEMINI_API_KEY', '') # ไปตั้งค่าในไฟล์ .env ถ้ามี หรือใส่ตรงนี้ก็ได้
+AI_MODEL                 = "gemini-2.5-flash"
+AI_CONFIDENCE_THRESHOLD  = 75
 
-# ============================================================
-# [M] Smart Martingale
-# ============================================================
+
+ENABLE_GOLD_SESSION_FILTER = False 
+GOLD_DISALLOW_HOURS        = [7, 8, 9, 10]
+
+ENABLE_HEDGE = False
+
 ENABLE_MARTINGALE   = False
 MART_MAX_LEVEL      = 3
 MART_LOT_MULTIPLIER = 1.5
 
-# ============================================================
-# Grid
-# ============================================================
 ENABLE_GRID       = False
-GRID_MAGIC_NUMBER = 20250412
+GRID_MAGIC_NUMBER = 20250416
 GRID_MODE         = "AUTO"
 GRID_RISK_MODE    = "PERCENT"
 GRID_RISK_PERCENT = 0.1
 
-# ============================================================
-# Filters & Timing
-# ============================================================
 TRADE_TIME_START   = 0
 TRADE_TIME_END     = 23
-ENABLE_NEWS_FILTER = False
+ENABLE_NEWS_FILTER = True
+NEWS_MODE          = "AVOID"
+NEWS_MINUTES_BEFORE = 30
+NEWS_MINUTES_AFTER  = 30
 
-# ============================================================
-# Notification
-# ============================================================
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_USER_ID              = os.getenv('LINE_USER_ID', '')
 TELEGRAM_BOT_TOKEN        = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID          = os.getenv('TELEGRAM_CHAT_ID', '')
 
-# ============================================================
-# Pending Orders
-# ============================================================
 ENABLE_PENDING_ORDERS  = True
-MAX_PENDING_PER_SYMBOL = 2
+MAX_PENDING_PER_SYMBOL = 5
 PENDING_EXPIRY_HOURS   = 4
 BREAKOUT_DISTANCE_PIPS  = 30
 
-# ============================================================
-# Portfolio Recovery
-# ============================================================
-RECOVERY_MODE               = True
+RECOVERY_MODE               = False
 RECOVERY_TRIGGER_PERCENT    = 10.0
-RECOVERY_EXIT_PROFIT        = 0.50
-POST_TRADE_COOLDOWN_MINUTES = 5
-ENABLE_LOSS_SHAVING         = True
-MIN_PROFIT_TO_SHAVE         = 1.0
-
+RECOVERY_EXIT_PROFIT        = 5.0
+RECOVERY_LOT_MULTIPLIER     = 1.5
+POST_TRADE_COOLDOWN_MINUTES = 0.1
+ENABLE_LOSS_SHAVING         = False
+MIN_PROFIT_TO_SHAVE         = 2.0

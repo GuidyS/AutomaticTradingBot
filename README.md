@@ -1,67 +1,48 @@
-# SMC AI Trading Bot v4 — Anti-Loss Edition 🚀
+# 🤖 AI-Powered ICT/SMC Trading Bot (v4.5)
 
-ระบบเทรดอัตโนมัติ (EA) บน Python ที่ผสานกลยุทธ์ **Smart Money Concepts (SMC)** เข้ากับ **AI Analysis** ออกแบบมาเพื่อความแม่นยำสูงและการจัดการความเสี่ยงที่เข้มงวด (Anti-Loss) สำหรับเทรด XAUUSDc และ BTCUSDc บนแพลตฟอร์ม MetaTrader 5
+![Trading Bot](https://img.shields.io/badge/Strategy-ICT%20%2F%20SMC-gold)
+![AI](https://img.shields.io/badge/AI-Gemini%202.5-blue)
+![Platform](https://img.shields.io/badge/Platform-MT5%20%2F%20Python-green)
 
----
+An autonomous professional-grade trading system that integrates **Inner Circle Trader (ICT)** concepts with **Gemini AI** for high-probability trade execution in the Forex and Gold markets.
 
-## 🌟 ฟีเจอร์หลัก (Key Modules)
+## 🌟 Key Features
 
-### 🛡️ 1. Anti-Loss Systems
-*   **[H] Auto-Hedge:** ระบบเปิดไม้ตรงข้ามทันทีเมื่อราคาวิ่งสวนทางถึงจุด Trigger เพื่อล็อกความเสี่ยง และปิดทั้งตะกร้าเมื่อกำไรรวมเป็นบวก
-*   **[S] Structural SL/TP:** การวางจุดตัดขาดทุนตามโครงสร้างราคาจริง (Swing High/Low) และจุดทำกำไรตาม Order Block หรือ ATR
-*   **[R] Recovery Mode:** ระบบกู้พอร์ตอัตโนมัติเมื่อ Drawdown ถึงระดับที่กำหนด และระบบ **Loss Shaving** (เฉือนปิดไม้เสียด้วยไม้กำไร)
-*   **[M] Smart Martingale:** การเพิ่ม Lot อย่างเป็นระบบเมื่อแพ้ โดยต้องผ่านเกณฑ์ Entry Filter เท่านั้น
+### 🏛️ Institutional Strategies
+*   **7-Step ICT Consolidation**: Detects side-ways ranges, identifies liquidity sweeps (Turtle Soup), and executes upon confirmed re-entry.
+*   **Optimal Trade Entry (OTE)**: Automatically identifies trend retracement levels (0.62, 0.705, 0.79) for high-reward entries.
+*   **Standard Deviation Projections**: Uses SD expansion (2.0, 2.5) for precise institutional profit targets.
 
-### 🎯 2. Entry Filter v2 (5-Layer Gate)
-บอทจะเปิดออเดอร์เมื่อผ่านเงื่อนไขทั้ง 5 ชั้น:
-1.  **H4 Mega-Trend:** เทรดตามแนวโน้มใหญ่ระดับ 4 ชั่วโมง
-2.  **Volume & Volatility:** เช็คแรงซื้อขาย (Relative Volume) และความผันผวน
-3.  **RSI/MACD Window:** กรองสัญญาณ Overbought/Oversold และ Momentum
-4.  **MTF Alignment:** เทรนด์ M30 และ H1 ต้องสอดคล้องกับสัญญาณเข้า
-5.  **SMC Zone:** เข้าเทรดในโซน Discount/Premium เท่านั้น เพื่อให้ได้เปรียบด้านราคา
+### 🧠 Gemini AI Market Analysis
+*   **Dual-Playbook Mode**: AI switches between Range (Consolidation) and Trend (OTE) logic based on market context.
+*   **Confluence Filtering**: AI validates setups using **FVG (Fair Value Gaps)**, **Order Blocks (OB)**, and Multi-Timeframe (H1/M15) trend analysis.
 
-### 🤖 3. AI Analysis Integration
-*   เชื่อมต่อกับ **Ollama (Gemma)** เพื่อวิเคราะห์สภาพตลาดแบบ Real-time
-*   ระบบ **AI Bias Multiplier:** ปรับ Take Profit ตามความมั่นใจของ AI (Aggressive / Conservative)
-*   ส่ง AI Insights และสรุปผลงานผ่าน **Telegram**
+### 🛡️ Risk & Money Management
+*   **Equity Divisor Sizing**: Lot size calculated as `Capital / 10,000`.
+*   **Multi-TP Scaling**: Every trade is split into 3 segments with different profit targets to secure gains.
+*   **Virtual SL Cache**: Stops are stored locally to prevent broker-side stop-hunting.
+*   **Emergency Recovery**: Automatic drawdown protection mode triggers at -10%.
 
----
+## 🚀 Quick Start
 
-## 🛠️ การติดตั้งและใช้งาน (Setup & Usage)
-
-### 1. ความต้องการของระบบ (Requirements)
-*   Python 3.10+
-*   MetaTrader 5 Terminal (Login เรียบร้อย)
-*   Ollama (สำหรับระบบ AI)
-
-### 2. ติดตั้ง Library
-```bash
-pip install pandas MetaTrader5 requests python-dotenv
-```
-
-### 3. การตั้งค่า (Configuration)
-แก้ไขไฟล์ `config.py`:
-*   ใส่ `MT5_LOGIN`, `MT5_PASSWORD`, `MT5_SERVER`
-*   ตั้งค่า `TELEGRAM_BOT_TOKEN` และ `TELEGRAM_CHAT_ID`
-*   ปรับระดับความเสี่ยงที่ `RISK_PERCENT` และ `MAX_LOT`
-
-### 4. เริ่มต้นการทำงาน
-```bash
-python trader.py
-```
+1.  **Install Requirements**:
+    ```bash
+    pip install MetaTrader5 pandas requests pytz
+    ```
+2.  **Configure**: Update `config.py` with your MT5 credentials and Gemini API Key.
+3.  **Run**:
+    ```bash
+    python trader.py
+    ```
 
 ---
 
-## 📁 โครงสร้างไฟล์
-*   `trader.py`: ไฟล์หลักควบคุมการทำงาน (Logic v4)
-*   `config.py`: ศูนย์รวมการตั้งค่าทั้งหมด
-*   `database.py`: จัดการฐานข้อมูลและสถิติการเทรด
-*   `README.md`: คู่มือการใช้งาน
+## 📂 File Structure
+*   `trader.py`: Core execution engine and trading loop.
+*   `config.py`: Configuration and symbol profiles.
+*   `database.py`: Local trade storage and performance tracking.
+*   `ConsolidationICT.mq5`: Native MQL5 version for MetaTrader 5.
+*   `consolidation_ict_strategy.pine`: Native PineScript version for TradingView.
 
----
-
-## ⚠️ คำเตือนความเสี่ยง (Disclaimer)
-การเทรด CFD และ Forex มีความเสี่ยงสูง ผู้ใช้ควรทดสอบในบัญชี Demo ก่อนใช้งานจริง และควรเข้าใจกลยุทธ์ SMC ที่บอทใช้งานเพื่อการปรับจูนที่เหมาะสม
-
----
-**Version 4 - Refactored for High Precision & Safety**
+> [!IMPORTANT]
+> This bot is designed for autonomous trading on **XAUUSDc** and major pairs. Ensure your MT5 account has sufficient margin and the "Market Watch" includes the traded symbols.

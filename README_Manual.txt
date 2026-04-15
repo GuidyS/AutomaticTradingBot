@@ -1,80 +1,63 @@
 ================================================================================
-📗 คู่มือการติดตั้งและใช้งาน Forex Trading Bot v3.1 (Global Recovery + Dynamic Lot)
+AI-POWERED ICT/SMC TRADING BOT - TECHNICAL MANUAL (v4.5)
 ================================================================================
 
-บอทเทรดตัวนี้ถูกพัฒนาด้วย Python เชื่อมต่อกับ MetaTrader 5 (MT5) โดยมีระบบหลักคือ
-Scalp (SMC), Grid Trading, AI Market Analysis และระบบกู้พอร์ตอัจฉริยะ (Recovery Mode)
+1. OVERVIEW
+-----------
+This bot is a Python-based autonomous trading engine designed for MetaTrader 5 (MT5).
+It combines high-level SMC (Smart Money Concepts) logic with Gemini AI to filter 
+market noise and execute high-probability institutional setups.
 
---------------------------------------------------------------------------------
-1. สิ่งที่ต้องมีก่อนการติดตั้ง (Prerequisites)
---------------------------------------------------------------------------------
-- Windows OS (แนะนำให้รันบน PC หรือ VPS ที่เปิดตลอด 24/5)
-- โปรแกรม MetaTrader 5 (MT5) ติดตั้งและ Login เรียบร้อยแล้ว
-- Python 3.10 ขึ้นไป
-- โปรแกรม Ollama (สำหรับฟีเจอร์ AI วิเคราะห์ตลาด - ถ้าไม่ใช้สามารถปิดได้)
+2. CORE STRATEGIES
+------------------
+A. Playbook 1: ICT Consolidation Sweep
+   - Identifies an "Original Consolidation" (OC) box on the H1 timeframe.
+   - Monitors for a "Turtle Soup" (Liquidity Sweep) outside the box.
+   - Trigger: Price must close back INSIDE the box on M15.
+   - Confirmation: Candlestick pattern or price reaching the 0.5 Fibo level.
 
---------------------------------------------------------------------------------
-2. ขั้นตอนการติดตั้ง (Installation)
---------------------------------------------------------------------------------
-1. เปิด Terminal (CMD หรือ PowerShell) ในโฟลเดอร์ของโปรเจกต์
-2. ติดตั้ง Library ที่จำเป็นผ่าน pip:
-   > pip install -r requirements.txt
-3. เตรียมโมเดล: ตรวจสอบว่ามีไฟล์ catboost_model.pkl และ rf_model.pkl ในโฟลเดอร์
+B. Playbook 2: ICT Trending OTE (Optimal Trade Entry)
+   - Identifies the current "Impulsive Leg" (Market Structure).
+   - Retracements are measured at 62%, 70.5%, and 79% Fibonacci levels.
+   - Confluence: AI seeks overlap with Fair Value Gaps (FVG) or Order Blocks.
+   - Targets: SD (Standard Deviation) 2.0 and 2.5 of the impulsive leg.
 
---------------------------------------------------------------------------------
-3. การตั้งค่าระบบ (Configuration)
---------------------------------------------------------------------------------
-ตรวจสอบและแก้ไขไฟล์หลัก ดังนี้:
+3. MONEY MANAGEMENT
+-------------------
+- Risk Mode: DIVISOR
+- Rule: 1 Lot per 10,000 Equity (e.g., $10,000 Balance = 1.00 Lot).
+- Multi-TP: Positions are split into 3 orders with ratios [0.4, 0.3, 0.3].
+- SL Method: SL is set based on the Box Size or OTE structure (approx. 1:1 initial RR).
 
-- [.env]: ใส่ข้อมูลบัญชี MT5 (Login, Password, Server) 
-          และใส่ TOKEN ของ LINE หรือ Telegram เพื่อรับแจ้งเตือน
-          *แนะนำใช้ Telegram เพราะเสถียรกว่าและส่งข้อความได้ไม่จำกัด*
+4. CONFIGURATION (config.py)
+----------------------------
+- AI_API_KEY: Your Google Gemini API key.
+- MT5_LOGIN / MT5_PASSWORD / MT5_SERVER: Your account details.
+- SYMBOLS: List of pairs to trade (e.g., ["XAUUSDc", "EURUSD"]).
+- ICT_STRATEGY_ENABLED: Set to True to active Playbooks 1 & 2.
+- RECOVERY_TRIGGER_PERCENT: Drawdown % to activate emergency recovery mode (Default: -10%).
 
-- [config.py]: 
-    * ACTIVE_SYMBOL: เลือกคู่เงินที่จะเทรด
-    * RISK_PERCENT: ตั้งค่าความเสี่ยงของไม้ Scalp (แนะนำ 0.5%)
-    * GRID_RISK_PERCENT: ตั้งค่าความเสี่ยงของไม้ Grid (แนะนำ 0.1%)
-    * RECOVERY_TRIGGER_PERCENT: จุดติดลบที่จะเริ่มกู้พอร์ต (แนะนำ 10.0%)
+5. USAGE INSTRUCTIONS
+---------------------
+1. Ensure MetaTrader 5 is installed and logged in.
+2. Open MT5 -> Tools -> Options -> Expert Advisors -> Allow WebRequest.
+3. Install Python dependencies: pip install MetaTrader5 pandas requests.
+4. Run: python trader.py
+5. View terminal logs for real-time AI decision making.
 
---------------------------------------------------------------------------------
-4. ฟีเจอร์ใหม่ในเวอร์ชัน 3.1 (What's New)
---------------------------------------------------------------------------------
-1. [Dynamic Portfolio Recovery]: 
-   - ระบบจะตรวจเช็คค่า Drawdown รวมของทั้งพอร์ตโดยอัตโนมัติ 
-   - หากติดลบถึงเกณฑ์ (เช่น -10%) บอทจะเข้าโหมด Recovery เพื่อเคลียร์พอร์ต
-   - ในโหมด Recovery บอทจะประคองพอร์ตและปิดออเดอร์ทั้งหมดเมื่อกำไรรวมเป็นบวก (+0.50$)
-   - บอทจะจดจำสถานะนี้ไว้ใน Database แม้จะรีตาร์ทเครื่องโหมดนี้ก็ยังทำงานต่อจนจบ
+6. SAFETY FEATURES
+------------------
+- Virtual SL: The bot hides your stop-losses from the broker.
+- Notification Throttling: Drawdown alerts are limited to every 15 minutes.
+- Weekend Protection: Closes positions Friday night to avoid gaps.
+- Spread Check: Blocks trades if spread exceeds 3.0 pips (XAUUSDc).
 
-2. [Dynamic Grid Lot (Formula B)]:
-   - ไม้ Grid จะออกขนาด Lot ตามสัดส่วนของเงินทุน (Equity) ให้อัตโนมัติ
-   - ทำให้พอร์ตโตขึ้น Lot ก็จะถูกขยับขึ้นตามระเบียบวินัยการเทรดที่ตั้งไว้
-
-3. [Scalp Protection]:
-   - บอทจะหยุดเปิดไม้ Scalp ใหม่ทันทีเมื่ออยู่ในโหมด Recovery เพื่อป้องกันพอร์ตลากเพิ่ม
-
---------------------------------------------------------------------------------
-5. วิธีการเริ่มใช้งาน (How to use)
---------------------------------------------------------------------------------
-1. เปิดโปรแกรม MetaTrader 5 ทิ้งไว้ (กดปุ่ม "Algo Trading" ให้เป็นสีเขียว)
-2. เปิดโปรแกรม Ollama หากต้องการใช้ AI วิเคราะห์ตลาด
-3. รันบอทด้วยคำสั่ง:
-   > python trader.py
-
---------------------------------------------------------------------------------
-6. การจัดการฐานข้อมูล (Database)
---------------------------------------------------------------------------------
-บอทจะสร้างไฟล์ [trades.db] เพื่อจัดเก็บ:
-- ประวัติการเทรด (Logs)
-- สถานะระบบ (Bot Settings เช่น โหมด Recovery)
-- สถิติ Win Rate แยกตามประเภท (Scalp/Grid)
-
---------------------------------------------------------------------------------
-7. การแก้ไขปัญหา (Troubleshooting)
---------------------------------------------------------------------------------
-- [AI Error]: แสดงว่า Ollama ยังไม่ได้เปิด หรือโมเดล gemma4:latest ยังไม่ถูกโหลด
-- [MT5 Init Failed]: ตรวจสอบการ Login และ Server ในไฟล์ .env
-- [Recovery ไม่ยอมหยุด]: ตรวจเช็คกำไรรวมพอร์ตว่าถึงเป้า +0.50$ หรือยัง
+7. TROUBLESHOOTING
+------------------
+- ERROR: "AI Analytics Error": Check your API key or internet connection.
+- ERROR: "MT5 Disconnected": The bot will auto-retry every 10 seconds.
+- ERROR: "Max Orders hit": The bot has reached the symbol order cap (Default: 3).
 
 ================================================================================
-ขอให้สนุกและกำไรงามๆ กับการเทรดนะครับ! ระบบนี้ถูกออกแบบมาเพื่อความปลอดภัยสูงสุด 🚀📈
+Developed by: Antigravity AI Trading Systems
 ================================================================================
