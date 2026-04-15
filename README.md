@@ -4,45 +4,45 @@
 ![AI](https://img.shields.io/badge/AI-Gemini%202.5-blue)
 ![Platform](https://img.shields.io/badge/Platform-MT5%20%2F%20Python-green)
 
-An autonomous professional-grade trading system that integrates **Inner Circle Trader (ICT)** concepts with **Gemini AI** for high-probability trade execution in the Forex and Gold markets.
+ระบบเทรดอัตโนมัติระดับมืออาชีพที่ผสานกลยุทธ์ **Inner Circle Trader (ICT)** เข้ากับพลังของ **Gemini AI** เพื่อการวิเคราะห์ตลาดและเข้าเทรดในจุดที่มีความได้เปรียบสูง ทั้งในตลาด Forex และ Gold (XAUUSD)
 
-## 🌟 Key Features
+## 🌟 ฟีเจอร์หลัก
 
-### 🏛️ Institutional Strategies
-*   **7-Step ICT Consolidation**: Detects side-ways ranges, identifies liquidity sweeps (Turtle Soup), and executes upon confirmed re-entry.
-*   **Optimal Trade Entry (OTE)**: Automatically identifies trend retracement levels (0.62, 0.705, 0.79) for high-reward entries.
-*   **Standard Deviation Projections**: Uses SD expansion (2.0, 2.5) for precise institutional profit targets.
+### 🏛️ กลยุทธ์สถาบัน (Institutional Strategies)
+*   **7-Step ICT Consolidation**: ตรวจจับช่วงราคาพักตัว (Sideways), ระบุจุดกวาดสภาพคล่อง (Liquidity Sweep/Turtle Soup), และเข้าเทรดเมื่อราคากลับเข้าสู่กรอบ (Confirmed Re-entry)
+*   **Optimal Trade Entry (OTE)**: ระบุจุดย่อตัวที่คุ้มค่าที่สุดอัตโนมัติที่ระดับ Fibonacci **0.62, 0.705, และ 0.79**
+*   **Standard Deviation Projections**: ใช้การขยายของราคา (Expansion) ที่ระดับ **SD 2.0 และ 2.5** เพื่อกำหนดเป้าหมายกำไรตามรอยรายใหญ่
 
-### 🧠 Gemini AI Market Analysis
-*   **Dual-Playbook Mode**: AI switches between Range (Consolidation) and Trend (OTE) logic based on market context.
-*   **Confluence Filtering**: AI validates setups using **FVG (Fair Value Gaps)**, **Order Blocks (OB)**, and Multi-Timeframe (H1/M15) trend analysis.
+### 🧠 การวิเคราะห์ด้วย Gemini AI 
+*   **Dual-Playbook Mode**: AI จะสลับโหมดการทำงานระหว่างช่วงตลาดพักตัว (Consolidation) และตลาดมีเทรนด์ (OTE) โดยอัตโนมัติ
+*   **Confluence Filtering**: AI จะตรวจสอบปัจจัยร่วม ทั้ง **FVG (Fair Value Gaps)**, **Order Blocks (OB)**, และแนวโน้มหลายไทม์เฟรม (H1/M15) ก่อนส่งคำสั่ง
 
-### 🛡️ Risk & Money Management
-*   **Equity Divisor Sizing**: Lot size calculated as `Capital / 10,000`.
-*   **Multi-TP Scaling**: Every trade is split into 3 segments with different profit targets to secure gains.
-*   **Virtual SL Cache**: Stops are stored locally to prevent broker-side stop-hunting.
-*   **Emergency Recovery**: Automatic drawdown protection mode triggers at -10%.
+### 🛡️ การบริหารความเสี่ยงอย่างเป็นระบบ
+*   **Equity Divisor Sizing**: คำนวณขนาด Lot ตามสูตร **`Capital / 10,000`** เพื่อความปลอดภัยของพอร์ต
+*   **Multi-TP Scaling**: แบ่งปิดกำไร 3 ระยะ เพื่อล็อคกำไรเข้าพอร์ตและลดความเสี่ยง
+*   **Virtual SL Cache**: ซ่อนจุดตัดขาดทุนจากโบรกเกอร์เพื่อป้องกันการถูกลากกิน SL (Stop-hunting)
+*   **Global Recovery Mode**: ระบบป้องกันพอร์ตอัตโนมัติเมื่อเกิด Drawdown ถึง -10%
 
-## 🚀 Quick Start
+## 🚀 เริ่มต้นใช้งาน
 
-1.  **Install Requirements**:
+1.  **ติดตั้ง Library ที่จำเป็น**:
     ```bash
     pip install MetaTrader5 pandas requests pytz
     ```
-2.  **Configure**: Update `config.py` with your MT5 credentials and Gemini API Key.
-3.  **Run**:
+2.  **ตั้งค่าระบบ**: อัปเดตไฟล์ `config.py` ด้วยข้อมูลบัญชี MT5 และ Gemini API Key ของคุณ
+3.  **รันระบบ**:
     ```bash
     python trader.py
     ```
 
 ---
 
-## 📂 File Structure
-*   `trader.py`: Core execution engine and trading loop.
-*   `config.py`: Configuration and symbol profiles.
-*   `database.py`: Local trade storage and performance tracking.
-*   `ConsolidationICT.mq5`: Native MQL5 version for MetaTrader 5.
-*   `consolidation_ict_strategy.pine`: Native PineScript version for TradingView.
+## 📂 โครงสร้างไฟล์
+*   `trader.py`: หัวใจหลักของระบบและการทำงานของบอท
+*   `config.py`: ศูนย์รวมการตั้งค่าและโปรไฟล์ของแต่ละสัญลักษณ์
+*   `database.py`: ระบบบันทึกประวัติการเทรดและตรวจสอบผลงาน
+*   `ConsolidationICT.mq5`: เวอร์ชั่น MQL5 สำหรับรันบน MetaTrader 5 โดยตรง
+*   `consolidation_ict_strategy.pine`: เวอร์ชั่น PineScript สำหรับใช้งานบน TradingView
 
 > [!IMPORTANT]
-> This bot is designed for autonomous trading on **XAUUSDc** and major pairs. Ensure your MT5 account has sufficient margin and the "Market Watch" includes the traded symbols.
+> บอทถูกออกแบบมาเพื่อทำงานอัตโนมัติบน **XAUUSDc** และคู่เงินหลัก โปรดตรวจสอบให้แน่ใจว่าบัญชี MT5 ของคุณมี Margin เพียงพอและเพิ่มสัญลักษณ์ที่ต้องการเทรดใน Market Watch แล้ว

@@ -1,63 +1,63 @@
 ================================================================================
-AI-POWERED ICT/SMC TRADING BOT - TECHNICAL MANUAL (v4.5)
+คู่มือการใช้งานระบบเทรด AI ICT/SMC (v4.5) - ฉบับภาษาไทย
 ================================================================================
 
-1. OVERVIEW
------------
-This bot is a Python-based autonomous trading engine designed for MetaTrader 5 (MT5).
-It combines high-level SMC (Smart Money Concepts) logic with Gemini AI to filter 
-market noise and execute high-probability institutional setups.
+1. ภาพรวมระบบ (System Overview)
+-------------------------------
+บอทชุดนี้เป็นระบบเทรดอัตโนมัติที่รันบนภาษา Python เพื่อควบคุม MetaTrader 5 (MT5) 
+โดยใช้ตรรกะระดับสูงของ SMC (Smart Money Concepts) ร่วมกับ Gemini AI ในการ
+คัดกรองสัญญาณรบกวนและเข้าเทรดตามรอยสถาบันการเงิน (Institutional Setups)
 
-2. CORE STRATEGIES
-------------------
-A. Playbook 1: ICT Consolidation Sweep
-   - Identifies an "Original Consolidation" (OC) box on the H1 timeframe.
-   - Monitors for a "Turtle Soup" (Liquidity Sweep) outside the box.
-   - Trigger: Price must close back INSIDE the box on M15.
-   - Confirmation: Candlestick pattern or price reaching the 0.5 Fibo level.
+2. กลยุทธ์หลัก (Core Strategies)
+-------------------------------
+ก. Playbook 1: ICT Consolidation Sweep
+   - ค้นหากรอบ "Original Consolidation" (OC) ในไทม์เฟรม 1 ชั่วโมง (H1)
+   - ตรวจจับ "Turtle Soup" (การกวาดสภาพคล่อง) เมื่อราคาหลุดนอกกรอบ
+   - จุดเข้า: ราคาต้องกลับมาปิด (Close) ภายในกรอบเดิมในไทม์เฟรม M15 เท่านั้น
+   - การยืนยัน: ดูรูปแบบแท่งเทียนหรือราคาแตะระดับ 0.5 Fibo (Middle Line)
 
-B. Playbook 2: ICT Trending OTE (Optimal Trade Entry)
-   - Identifies the current "Impulsive Leg" (Market Structure).
-   - Retracements are measured at 62%, 70.5%, and 79% Fibonacci levels.
-   - Confluence: AI seeks overlap with Fair Value Gaps (FVG) or Order Blocks.
-   - Targets: SD (Standard Deviation) 2.0 and 2.5 of the impulsive leg.
+ข. Playbook 2: ICT Trending OTE (Optimal Trade Entry)
+   - ระบุ "Impulsive Leg" หรือโครงสร้างราคาที่มีแรงขับเคลื่อนรุนแรง
+   - วัดระยะย่อตัวที่ระดับ Fibonacci 62%, 70.5%, และ 79%
+   - จุดบรรจบ: AI จะมองหาโซนที่ทับซ้อนกับ Fair Value Gaps (FVG) หรือ Order Blocks
+   - เป้าหมาย: ใช้ระดับ Standard Deviation (SD) 2.0 และ 2.5 เพื่อหาจุดทำกำไร
 
-3. MONEY MANAGEMENT
--------------------
-- Risk Mode: DIVISOR
-- Rule: 1 Lot per 10,000 Equity (e.g., $10,000 Balance = 1.00 Lot).
-- Multi-TP: Positions are split into 3 orders with ratios [0.4, 0.3, 0.3].
-- SL Method: SL is set based on the Box Size or OTE structure (approx. 1:1 initial RR).
+3. การบริหารจัดการเงินทุน (Money Management)
+------------------------------------------
+- หัวใจหลัก: สูตร Lot = Capital / 10,000 (เช่น ทุน $10,000 จะออก Lot 1.00)
+- การปิดกำไร: แบ่งเป็น 3 ระยะ (Multi-TP) ในสัดส่วน [0.4, 0.3, 0.3]
+- การตัดขาดทุน (SL): ใช้ระยะขนาดของกรอบไซด์เวย์ (Box Size) หรือโครงสร้าง OTE
+- ระบบซ่อน SL: ใช้ Virtual SL เพื่อไม่ให้โบรกเกอร์เห็นจุดตัดขาดทุนจริง
 
-4. CONFIGURATION (config.py)
-----------------------------
-- AI_API_KEY: Your Google Gemini API key.
-- MT5_LOGIN / MT5_PASSWORD / MT5_SERVER: Your account details.
-- SYMBOLS: List of pairs to trade (e.g., ["XAUUSDc", "EURUSD"]).
-- ICT_STRATEGY_ENABLED: Set to True to active Playbooks 1 & 2.
-- RECOVERY_TRIGGER_PERCENT: Drawdown % to activate emergency recovery mode (Default: -10%).
+4. การตั้งค่าที่สำคัญ (config.py)
+------------------------------
+- AI_API_KEY: คีย์สำหรับใช้งาน Google Gemini AI
+- ข้อมูลบัญชี: MT5_LOGIN / MT5_PASSWORD / MT5_SERVER
+- SYMBOLS: รายชื่อคู่เงินที่ต้องการเทรด (แนะนำ: ["XAUUSDc"])
+- ICT_STRATEGY_ENABLED: ต้องตั้งเป็น True เพื่อให้ Playbook 1 และ 2 ทำงาน
+- RECOVERY_TRIGGER_PERCENT: จุดที่ระบบกู้พอร์ตจะทำงาน (ค่าเริ่มต้น: -10%)
 
-5. USAGE INSTRUCTIONS
----------------------
-1. Ensure MetaTrader 5 is installed and logged in.
-2. Open MT5 -> Tools -> Options -> Expert Advisors -> Allow WebRequest.
-3. Install Python dependencies: pip install MetaTrader5 pandas requests.
-4. Run: python trader.py
-5. View terminal logs for real-time AI decision making.
+5. ขั้นตอนการเริ่มใช้งาน
+----------------------
+1. ตรวจสอบว่า MetaTrader 5 เปิดอยู่และล็อกอินเรียบร้อย
+2. ใน MT5: Tools -> Options -> Expert Advisors -> Allow WebRequest
+3. ติดตั้ง Library: pip install MetaTrader5 pandas requests pytz
+4. เริ่มรันบอท: python trader.py
+5. สังเกตการณ์: ตรวจสอบหน้าจอ Terminal เพื่อดูการวิเคราะห์ของ AI แบบ Real-time
 
-6. SAFETY FEATURES
-------------------
-- Virtual SL: The bot hides your stop-losses from the broker.
-- Notification Throttling: Drawdown alerts are limited to every 15 minutes.
-- Weekend Protection: Closes positions Friday night to avoid gaps.
-- Spread Check: Blocks trades if spread exceeds 3.0 pips (XAUUSDc).
+6. ระบบความปลอดภัย
+-----------------
+- Virtual SL: บอทจะเก็บจุดตัดขาดทุนไว้ในเครื่อง และจะสั่งปิดออเดอร์เมื่อราคาถึงจุด
+- Notification Throttling: แจ้งเตือนสถานะพอร์ต/Emergency ทุกๆ 15 นาที
+- Weekend Protection: ปิดออเดอร์ทั้งหมดก่อนปิดตลาดวันศุกร์ (เพื่อเลี่ยง Gap)
+- Spread Check: บล็อคการเทรดหากค่า Spread ของทอง (XAUUSDc) สูงเกิน 3.0 pips
 
-7. TROUBLESHOOTING
-------------------
-- ERROR: "AI Analytics Error": Check your API key or internet connection.
-- ERROR: "MT5 Disconnected": The bot will auto-retry every 10 seconds.
-- ERROR: "Max Orders hit": The bot has reached the symbol order cap (Default: 3).
+7. การแก้ไขปัญหาเบื้องต้น
+----------------------
+- "AI Analytics Error": ตรวจสอบ API Key หรือความเสถียรของอินเตอร์เน็ต
+- "MT5 Disconnected": บอทจะพยายามเชื่อมต่อใหม่เองทุกๆ 10 วินาที
+- "Max Orders hit": ออเดอร์เต็มโควต้าของสัญลักษณ์นั้นๆ (ค่าเริ่มต้นคือ 3 ไม้)
 
 ================================================================================
-Developed by: Antigravity AI Trading Systems
+พัฒนาโดย: Antigravity AI Trading Systems
 ================================================================================
