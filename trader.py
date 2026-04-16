@@ -27,8 +27,6 @@ class SelfLearningEA:
         self.ai_in_progress = {}
         self.executor = ThreadPoolExecutor(max_workers=2)
 
-        self.grid_last_open_time  = {}
-        self.grid_safety_triggered = {}
         self.symbol_tp_multipliers = {}
         self.last_close_time = {}
         self.acc_scalp_profit = {}
@@ -52,6 +50,8 @@ class SelfLearningEA:
 
         self._order_retry_cache = {}  
         self._telegram_offset = None
+        self.symbol_ai_confidence = {}
+        self.last_basket_alert = {}
 
     def log_throttled(self, msg, symbol=None, throttle_sec=60):
         key = (symbol, msg[:40])
@@ -64,7 +64,6 @@ class SelfLearningEA:
         if symbol not in self.trade_stats:
             self.trade_stats[symbol] = {
                 'SCALP': {'wins':0,'losses':0,'gross_profit':0.0,'gross_loss':0.0},
-                'GRID':  {'wins':0,'losses':0,'gross_profit':0.0,'gross_loss':0.0},
                 'HEDGE': {'wins':0,'losses':0,'gross_profit':0.0,'gross_loss':0.0},
                 'MART':  {'wins':0,'losses':0,'gross_profit':0.0,'gross_loss':0.0},
             }
@@ -147,13 +146,28 @@ class SelfLearningEA:
                     msg = msg.strip().upper()
                     if msg == '/CLOSEALL':
                         close_all_trigger = True
+                    elif msg == '/CLOSEBASKET':
+                        for sym in config.SYMBOLS:
+                            pos = [p for p in (mt5.positions_get(symbol=sym) or []) if p.magic == config.MAGIC_NUMBER]
+                            if pos:
+                                tick = mt5.symbol_info_tick(sym)
+                                self._close_all_scalp(sym, pos, tick, reason="MANUAL_BASKET_CLOSE")
+                                self.notify(f"✅ *[MANUAL]* ปิด Scalp Basket สำหรับ {sym} เรียบร้อยแล้ว", telegram=True)
+                            else:
+                                self.notify(f"ℹ️ *[MANUAL]* ไม่พบ Scalp Basket สำหรับ {sym}", telegram=True)
                     elif msg == '/STATUS':
                         self.send_performance_report()
                         self.notify("✅ สถานะปัจุบันถูกรายงานด่านบนแล้ว", telegram=True)
                     elif msg == '/PING':
                         self.notify("🏓 PONG! บอทยังทำงานอยู่และคอยดูกราฟให้ตามปกติครับ!", telegram=True)
                     elif msg == '/HELP':
-                        self.notify("🛠️ **คำสั่งที่บอทรองรับ:**\n/CLOSEALL - ปิดทุกไม้ฉุกเฉิน\n/STATUS - สรุปยอดและผลประกอบการล่าสุด\n/PING - เช็คว่าบอทหลุดไหม\n/HELP - ดูคำสั่งทั้งหมด", telegram=True)
+                        help_text = ("🛠️ **คำสั่งที่บอทรองรับ:**\n"
+                                     "/CLOSEALL - ปิดทุกไม้ฉุกเฉิน\n"
+                                     "/CLOSEBASKET - ปิดเฉพาะกลุ่มกำไร (Scalp Layer)\n"
+                                     "/STATUS - สรุปยอดและผลประกอบการล่าสุด\n"
+                                     "/PING - เช็คว่าบอทหลุดไหม\n"
+                                     "/HELP - ดูคำสั่งทั้งหมด")
+                        self.notify(help_text, telegram=True)
         except:
             pass
         return close_all_trigger
@@ -277,7 +291,7 @@ class SelfLearningEA:
             tick = mt5.symbol_info_tick(symbol)
             if not tick: continue
             for p in positions:
-                if p.magic not in [config.MAGIC_NUMBER, config.GRID_MAGIC_NUMBER]: continue
+                if p.magic != config.MAGIC_NUMBER: continue
                 current_price = tick.bid if p.type == mt5.ORDER_TYPE_BUY else tick.ask
                 price_diff = abs(p.price_open - current_price)
                 si = mt5.symbol_info(symbol)
@@ -300,7 +314,7 @@ class SelfLearningEA:
         all_positions = mt5.positions_get() or []
         closed_count = 0
         for p in all_positions:
-            if p.magic not in [config.MAGIC_NUMBER, config.GRID_MAGIC_NUMBER]: continue
+            if p.magic != config.MAGIC_NUMBER: continue
             close_price = mt5.symbol_info_tick(p.symbol).bid if p.type == mt5.ORDER_TYPE_BUY else mt5.symbol_info_tick(p.symbol).ask
             close_dir = 'SELL' if p.type == mt5.ORDER_TYPE_BUY else 'BUY'
             ticket = self._send_order(p.symbol, close_dir, p.volume, 0, 0, p.magic, f"{reason}_CLOSE", pending_price=close_price)
@@ -635,7 +649,8 @@ class SelfLearningEA:
             lot = balance / div if div > 0 else config.FIXED_LOT
             lot = round(lot / sym_info.volume_step) * sym_info.volume_step
             max_l = getattr(config, 'MAX_LOT', 0.5)
-            lot   = min(lot, max_l)
+            min_l = getattr(config, 'MIN_LOT', 0.01)
+            lot   = max(min_l, min(lot, max_l))
             return max(sym_info.volume_min, min(lot, sym_info.volume_max))
 
         r_pct      = risk_pct if risk_pct is not None else config.RISK_PERCENT
@@ -652,7 +667,8 @@ class SelfLearningEA:
             lot = risk_amt / ((safe_dist/ts) * tv)
             lot = round(lot / sym_info.volume_step) * sym_info.volume_step
             max_l = getattr(config, 'MAX_LOT', 0.5)
-            lot   = min(lot, max_l)
+            min_l = getattr(config, 'MIN_LOT', 0.01)
+            lot   = max(min_l, min(lot, max_l))
             return max(sym_info.volume_min, min(lot, sym_info.volume_max))
         return config.FIXED_LOT
 
@@ -661,12 +677,20 @@ class SelfLearningEA:
         if not si: return lot
         return max(si.volume_min, min(round(lot / si.volume_step) * si.volume_step, si.volume_max))
 
-    def count_open_orders(self, symbol, magic=None):
+    def count_open_orders(self, symbol, magic=None, comment_filter=None, exclude_filter=None):
         m = magic or config.MAGIC_NUMBER
         symbol = symbol.upper()
         all_p = mt5.positions_get()
         if not all_p: return 0
-        return sum(1 for p in all_p if p.symbol.upper() == symbol and p.magic == m)
+        count = 0
+        for p in all_p:
+            if p.symbol.upper() == symbol and p.magic == m:
+                if comment_filter and comment_filter not in p.comment:
+                    continue
+                if exclude_filter and exclude_filter in p.comment:
+                    continue
+                count += 1
+        return count
 
     def count_pending_orders(self, symbol):
         symbol = symbol.upper()
@@ -674,15 +698,31 @@ class SelfLearningEA:
         if not all_o: return 0
         return sum(1 for o in all_o if o.symbol.upper() == symbol and o.magic == config.MAGIC_NUMBER)
 
+    def cancel_pending_orders(self, symbol):
+        symbol = symbol.upper()
+        orders = mt5.orders_get(symbol=symbol)
+        if not orders: return
+        
+        count = 0
+        for o in orders:
+            if o.magic == config.MAGIC_NUMBER:
+                req = {
+                    "action": mt5.TRADE_ACTION_REMOVE,
+                    "order":  o.ticket
+                }
+                res = mt5.order_send(req)
+                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                    count += 1
+        
+        if count > 0:
+            self.log_throttled(f"🗑️ [{symbol}] Cleaned up {count} stale pending orders", symbol, throttle_sec=30)
+
     def get_symbol_pip(self, symbol):
         si = mt5.symbol_info(symbol)
         return si.point * 10 if si else 0.0001
 
     def check_trade_safety(self, symbol, direction, price, is_scalp=False, smc_zone=None, ignore_spacing=False):
-        pip   = self.get_symbol_pip(symbol)
-        s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
-        min_d = s_cfg.get('min_scalp_spacing', 15) * pip
-        magics = [config.MAGIC_NUMBER, config.GRID_MAGIC_NUMBER]
+        magics = [config.MAGIC_NUMBER]
 
         all_now = mt5.positions_get(symbol=symbol) or []
         max_t = s_cfg.get('max_scalp_orders', 2)
@@ -785,7 +825,7 @@ class SelfLearningEA:
         
         return max(0.8, min(target_rr, 2.5))
 
-    def execute_trade(self, symbol, direction, atr_val, order_index=1, pending_type=None, pending_price=0.0, smc_zone=None, comment=None, box_high=0.0, box_low=0.0, manual_tp=0.0):
+    def execute_trade(self, symbol, direction, atr_val, order_index=1, pending_type=None, pending_price=0.0, smc_zone=None, comment=None, box_high=0.0, box_low=0.0, manual_tp=0.0, ai_conf=0):
         tick = mt5.symbol_info_tick(symbol)
         if tick is None: return None
 
@@ -834,10 +874,24 @@ class SelfLearningEA:
             return None
 
         sl_dist = abs((pending_price if pending_type else check_p) - sl)
-        total_lot = self.calculate_lot(symbol, sl_dist=sl_dist)
+        
+        is_consolidation = (box_high > 0 and box_low > 0)
+        
+        if is_consolidation:
+            # Consolidation Lot: 0.01 - 0.05 based on AI Confidence
+            threshold = getattr(config, 'AI_CONFIDENCE_THRESHOLD', 75)
+            safe_conf = max(threshold, min(ai_conf, 100))
+            if 100 - threshold > 0:
+                total_lot = 0.01 + (safe_conf - threshold) * (0.05 - 0.01) / (100 - threshold)
+            else:
+                total_lot = 0.05
+            total_lot = self.normalize_lot(symbol, total_lot)
+        else:
+            total_lot = self.calculate_lot(symbol, sl_dist=sl_dist)
 
         if use_multi_tp:
             ratios = getattr(config, 'MULTI_TP_RATIOS', [0.4, 0.3, 0.3])
+            first_ticket = None
             
             if is_limit_setup:
                 rr_levels = getattr(config, 'CONSOLIDATION_TP_MULTS', [0.5, 0.75, 1.0])
@@ -857,14 +911,24 @@ class SelfLearningEA:
                 lvl_tp = (check_p + dist) if direction == 'BUY' else (check_p - dist)
                 lvl_tp = self.normalize_price(symbol, lvl_tp)
                 
-                lvl_comment = f"{config.ORDER_COMMENT}_{direction[0]}#{order_index}_TP{i+1}" if not comment else comment
+                if comment:
+                    lvl_comment = comment
+                else:
+                    conso_tag = "_CONSO" if is_consolidation else ""
+                    lvl_comment = f"{config.ORDER_COMMENT}{conso_tag}_{direction[0]}#{order_index}_TP{i+1}"
+                
                 ticket = self._send_order(symbol, direction, lvl_lot, sl, lvl_tp, config.MAGIC_NUMBER, lvl_comment, pending_type, pending_price)
                 if ticket:
                     if not first_ticket: first_ticket = ticket
                     self.notify(f"🟢 *[{symbol}] {direction} TP{i+1}* Lot:{lvl_lot} | SL:{sl:.2f} | TP:{lvl_tp:.2f} | RR:{rr_lvl}")
             return first_ticket
         else:
-            order_comment = f"{config.ORDER_COMMENT}_{direction[0]}#{order_index}" if not comment else comment
+            if comment:
+                order_comment = comment
+            else:
+                conso_tag = "_CONSO" if is_consolidation else ""
+                order_comment = f"{config.ORDER_COMMENT}{conso_tag}_{direction[0]}#{order_index}"
+            
             ticket = self._send_order(symbol, direction, total_lot, sl, structural_tp, config.MAGIC_NUMBER, order_comment, pending_type, pending_price)
             if ticket:
                 s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
@@ -884,7 +948,7 @@ class SelfLearningEA:
 
         all_pos = mt5.positions_get(symbol=symbol) or []
         hedge_positions = [p for p in all_pos if "HEDGE" in p.comment or "RECOVERY" in p.comment or 
-                          (p.magic in [config.MAGIC_NUMBER, config.GRID_MAGIC_NUMBER] and 
+                          (p.magic == config.MAGIC_NUMBER and 
                            any(p.ticket == self.hedge_state.get(symbol, {}).get('hedge_ticket') for _ in [0]))]
         
         if len(hedge_positions) > 0:
@@ -1040,90 +1104,24 @@ class SelfLearningEA:
         except Exception as e:
             if "position" not in str(e).lower(): print(f"⚠️ TrailStop: {e}")
 
-    def get_grid_positions(self, symbol):
-        bp=[]; sp=[]; fl=0.0
-        for p in (mt5.positions_get(symbol=symbol) or []):
-            if p.magic == config.GRID_MAGIC_NUMBER:
-                fl += p.profit + p.swap + getattr(p,'commission',0.0)
-                (bp if p.type==mt5.ORDER_TYPE_BUY else sp).append(p.price_open)
-        return bp, sp, fl
-
-    def detect_grid_mode(self, symbol):
-        h4=self.get_h4_trend(symbol); h1=self.get_h1_trend(symbol)
-        if h4=='UP'   and h1=='UP':   return 'LONG_ONLY',  'H4↑H1↑'
-        if h4=='DOWN' and h1=='DOWN': return 'SHORT_ONLY', 'H4↓H1↓'
-        return 'SYMMETRIC', f'H4{h4} H1{h1}'
-
-    def close_all_grid_positions(self, symbol):
-        closed = 0
-        for pos in (mt5.positions_get(symbol=symbol) or []):
-            if pos.magic != config.GRID_MAGIC_NUMBER: continue
-            tick = mt5.symbol_info_tick(symbol)
-            if not tick: continue
-            ot = mt5.ORDER_TYPE_SELL if pos.type==mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-            pr = tick.bid if pos.type==mt5.ORDER_TYPE_BUY else tick.ask
-            res= mt5.order_send({"action":mt5.TRADE_ACTION_DEAL,"symbol":symbol,"volume":pos.volume,"type":ot,"position":pos.ticket,
-                                 "price":pr,"deviation":30,"magic":config.GRID_MAGIC_NUMBER,"comment":"GRID_EXIT",
-                                 "type_time":mt5.ORDER_TIME_GTC,"type_filling":mt5.ORDER_FILLING_FOK})
-            if res and res.retcode==mt5.TRADE_RETCODE_DONE: closed+=1
-        if closed: self.notify(f"🛑 *[GRID/{symbol}]* ปิด {closed} ออเดอร์")
-        self.grid_safety_triggered[symbol] = True
-
-    def run_grid(self, symbol, atr_val=None):
-        if not getattr(config,'ENABLE_GRID',False) or symbol not in config.SYMBOLS: return
-        try:
-            tick=mt5.symbol_info_tick(symbol); si=mt5.symbol_info(symbol)
-            if not tick or not si: return
-            pip  = si.point*10
-            s_cfg= config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
-            spacing = max(atr_val * s_cfg.get('grid_atr_multiplier',1.0),
-                         s_cfg.get('grid_min_spacing_pips',50)*pip) if atr_val else s_cfg.get('grid_spacing_pips',100)*pip
-            mode,reason = self.detect_grid_mode(symbol) if getattr(config,'GRID_MODE','AUTO')=='AUTO' else (getattr(config,'GRID_MODE','SYMMETRIC'),f'Manual')
-            bp,sp,fl = self.get_grid_positions(symbol)
-            basket_tp = s_cfg.get('grid_basket_tp', 4.0)
-            basket_sl = s_cfg.get('grid_basket_sl',-8.0)
-            total = len(bp)+len(sp)
-
-            if total > 0:
-                if fl >= basket_tp:
-                    self.notify(f"🎯 *[GRID/{symbol}] Basket TP +${fl:.2f}!*"); self.close_all_grid_positions(symbol)
-                    self.grid_safety_triggered[symbol]=False; return
-                if fl <= s_cfg.get('grid_max_loss',-50.0):
-                    print(f"\n🛑 [GRID/{symbol}] Safety Stop ${fl:.2f}"); self.close_all_grid_positions(symbol); return
-
-            if total==0 and self.grid_safety_triggered.get(symbol): self.grid_safety_triggered[symbol]=False
-            if self.grid_safety_triggered.get(symbol): return
-
-            max_lvl = s_cfg.get('grid_symmetric_max_levels',2) if mode=='SYMMETRIC' else s_cfg.get('grid_max_levels',3)
-            cd_ok   = not self.grid_last_open_time.get(symbol) or (datetime.now()-self.grid_last_open_time[symbol]).total_seconds()>=60
-            cur     = (tick.ask+tick.bid)/2.0
-
-            for dir_, prices in [('BUY',bp),('SELL',sp)]:
-                need = (mode in ('SYMMETRIC','LONG_ONLY') and dir_=='BUY') or (mode in ('SYMMETRIC','SHORT_ONLY') and dir_=='SELL')
-                if not need or not cd_ok or len(prices)>=max_lvl: continue
-                if any(abs(p-cur)<spacing*0.6 for p in prices): continue
-                lot    = s_cfg.get('grid_lot',0.01)
-                tp_d   = s_cfg.get('grid_tp_pips',500)*pip
-                sl_d   = s_cfg.get('grid_sl_pips',300)*pip
-                pr     = tick.ask if dir_=='BUY' else tick.bid
-                tp     = pr+tp_d if dir_=='BUY' else pr-tp_d
-                sl     = pr-sl_d if dir_=='BUY' else pr+sl_d
-                ticket = self._send_order(symbol, dir_, lot, sl, tp, config.GRID_MAGIC_NUMBER, f"GRID_{dir_[0]}#{len(prices)+1}")
-                if ticket:
-                    prices.append(cur); self.grid_last_open_time[symbol]=datetime.now()
-                    self.notify(f"🟩 *[GRID/{symbol}] {dir_} L{len(prices)}*\nLot:{lot} | SL:{sl:.2f} | TP:{tp:.2f}")
-
-            print(f"\r📊 [GRID/{symbol}] {mode}({reason}) B:{len(bp)} S:{len(sp)} F:${fl:.2f} TP:${basket_tp:.1f} SL:${basket_sl:.1f}     ", end="", flush=True)
-        except Exception as e: print(f"⚠️ [GRID/{symbol}] {e}")
 
     def place_pending_orders(self, symbol, signals, atr_val, fvg_type, fvg_entry, b_high, b_low):
         if not getattr(config,'ENABLE_PENDING_ORDERS',False): return
         s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
-        open_c= self.count_open_orders(symbol)
         pend_c= self.count_pending_orders(symbol)
-        max_t = s_cfg.get('max_scalp_orders',2)
         max_p = getattr(config,'MAX_PENDING_PER_SYMBOL',2)
-        if open_c+pend_c >= max_t or pend_c >= max_p: return
+        
+        # Independent Limit Check for Pending Orders
+        if pend_c >= max_p: return
+        
+        # Determine if we have a valid signal to place a new pending
+        has_breakout_signal = ('BUY' in signals or 'SELL' in signals)
+        has_fvg_signal      = (fvg_entry > 0)
+        
+        if not (has_breakout_signal or has_fvg_signal): return
+
+        # Clear existing pending orders before placing new ones
+        self.cancel_pending_orders(symbol)
         tick = mt5.symbol_info_tick(symbol); si = mt5.symbol_info(symbol)
         if not tick or not si: return
         pip  = si.point*10
@@ -1142,7 +1140,7 @@ class SelfLearningEA:
             elif fvg_type=="Bearish" and fvg_entry>tick.bid:
                 self.execute_trade(symbol,'SELL',atr_val,order_index=91,pending_type=mt5.ORDER_TYPE_SELL_LIMIT,pending_price=fvg_entry)
 
-        if self.count_open_orders(symbol)+self.count_pending_orders(symbol) < max_t:
+        if self.count_pending_orders(symbol) < max_p:
             if 'BUY' in signals:
                 p = b_high + d_p*pip
                 if p>tick.ask and not near(p):
@@ -1156,8 +1154,8 @@ class SelfLearningEA:
         try:
             history = mt5.history_deals_get(datetime.now()-timedelta(days=2), datetime.now()+timedelta(days=1))
             if not history: return
-            scalp_m = config.MAGIC_NUMBER; grid_m = config.GRID_MAGIC_NUMBER
-            new_deals = [d for d in history if d.symbol==symbol and d.magic in (scalp_m,grid_m) and d.entry==mt5.DEAL_ENTRY_OUT and not database.is_deal_notified(d.ticket)]
+            scalp_m = config.MAGIC_NUMBER
+            new_deals = [d for d in history if d.symbol==symbol and d.magic == scalp_m and d.entry==mt5.DEAL_ENTRY_OUT and not database.is_deal_notified(d.ticket)]
             if not new_deals: return
 
             groups = {}
@@ -1166,7 +1164,7 @@ class SelfLearningEA:
                 groups.setdefault(key,[]).append(d)
 
             for (magic, res_str), deals in groups.items():
-                trade_type = "GRID" if magic==grid_m else "SCALP"
+                trade_type = "SCALP"
                 total_p    = sum(d.profit for d in deals)
                 active     = mt5.positions_get(symbol=symbol) or []
                 rem        = sum(1 for p in active if p.magic==magic)
@@ -1195,8 +1193,7 @@ class SelfLearningEA:
         except Exception as e: print(f"⚠️ check_db [{symbol}]: {e}")
 
     def get_managed_positions(self, symbol):
-        pos = mt5.positions_get(symbol=symbol) or []
-        managed = [p for p in pos if p.magic in (config.MAGIC_NUMBER, config.GRID_MAGIC_NUMBER)]
+        managed = [p for p in pos if p.magic == config.MAGIC_NUMBER]
         total   = sum(p.profit+p.swap+getattr(p,'commission',0.0) for p in managed)
         return managed, total
 
@@ -1289,7 +1286,9 @@ class SelfLearningEA:
             
         import time
         model = getattr(config, 'AI_MODEL', 'gemini-2.5-flash')
-        if '3.1-pro' in model and 'preview' not in model: model = 'gemini-3.1-pro-preview'
+        # Ensure we use valid model identifiers for the 2026 environment
+        if '3.1' in model: model = 'gemini-3.1-pro-preview'
+        elif '1.5-flash' in model: model = 'gemini-2.5-flash'
         elif '1.5-pro' in model: model = 'gemini-2.5-pro'
         
         prompt = f"""
@@ -1326,12 +1325,13 @@ You must reply STRICTLY in JSON format. Use the following schema:
             "generationConfig": {"temperature": 0.2, "response_mime_type": "application/json"}
         }
 
-        fallback_models = [model, 'gemini-2.0-flash', 'gemini-flash-lite-latest', 'gemini-2.5-pro']
-        for attempt in range(3):
+        fallback_models = [model, 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3.1-pro-preview']
+        delays = [2, 4, 8, 16]
+        for attempt in range(len(delays) + 1):
             current_model = fallback_models[attempt] if attempt < len(fallback_models) else model
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={api_key}"
             try:
-                r = requests.post(url, json=payload, timeout=20)
+                r = requests.post(url, json=payload, timeout=60)
                 if r.status_code == 200:
                     resp = r.json()
                     text = resp['candidates'][0]['content']['parts'][0]['text']
@@ -1342,15 +1342,21 @@ You must reply STRICTLY in JSON format. Use the following schema:
                     data = json.loads(text)
                     return data
                 elif r.status_code == 503:
-                    if attempt < 2:
-                        print(f"[{symbol}] Gemini {current_model} High Demand (503). Retrying with backup AI... ({attempt+1}/3)")
-                        time.sleep(2)
+                    if attempt < len(delays):
+                        wait = delays[attempt]
+                        print(f"[{symbol}] Gemini {current_model} High Demand (503). Retrying in {wait}s... ({attempt+1}/{len(delays)})")
+                        time.sleep(wait)
                 else:
                     print(f"⚠️ AI Trade Decision API Error: {r.status_code} - {r.text}")
-                    break
+                    if attempt < len(delays):
+                        wait = delays[attempt]
+                        time.sleep(wait)
+                    else: break
             except Exception as e:
                 print(f"⚠️ AI Trade Decision Exception: {e}")
-                if attempt < 2: time.sleep(2)
+                if attempt < len(delays):
+                    wait = delays[attempt]
+                    time.sleep(wait)
                 
         return None
 
@@ -1359,33 +1365,61 @@ You must reply STRICTLY in JSON format. Use the following schema:
         if not api_key: return "ไม่สามารถติดต่อ AI ได้ (ไม่มี API Key)"
         try:
             prompt = (f"วิเคราะห์ {symbol}: ราคา={ctx['price']:.2f}, RSI={ctx['rsi']:.1f}, "
-                      f"MACD={ctx['macd']:.4f}, Trend={ctx['trend']}, Profit=${ctx['profit']:.2f}, "
+                      f"MACD={ctx['macd']:.4f}, Trend={ctx['trend']}, "
                       f"Session={ctx['session']}\n"
-                      f"ตอบเป็นภาษาไทย สรุปสั้น 2-3 บรรทัด และบังคับใส่ [TP_BIAS: AGGRESSIVE|NORMAL|CONSERVATIVE] แทรกมาท้ายสุดเพื่อกำหนดเป้า")
-                      
+                      f"ตอบเป็นภาษาไทย สรุปสั้น 2-3 บรรทัด และบังคับใส่ [TP_BIAS: AGGRESSIVE|NORMAL|CONSERVATIVE] แทรกมาท้ายสุดเพื่อกำหนดเป้า "
+                      f"และระบุ [CONFIDENCE: 0-100] กำกับความมั่นใจมาด้วย\n"
+                      f"**พิเศษ**: หากเห็นสัญญาณเทรนด์เปลี่ยนขณะที่มีกำไร ให้ใส่ [EXIT_ADVICE: YES] มาด้วย (ถ้าไม่มีให้หยุดไว้ หรือใส่ NO)")
+
             model = getattr(config, 'AI_MODEL', 'gemini-2.5-flash')
-            if '3.1-pro' in model and 'preview' not in model: model = 'gemini-3.1-pro-preview'
-            elif '1.5-pro' in model: model = 'gemini-2.5-pro'
+            if '3.1' in model: model = 'gemini-3.1-pro-preview'
+            elif '1.5' in model: model = model.replace('1.5', '2.5')
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             
-            import time
-            for attempt in range(3):
+            delays = [2, 4, 8, 16]
+            for attempt in range(len(delays) + 1):
                 payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.5}}
-                r = requests.post(url, json=payload, timeout=20)
-                
-                if r.status_code == 200:
-                    resp = r.json()
-                    text = resp.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                    if not text: return "AI ไม่ตอบสนองเนื้อหา"
-                    mul  = 1.8 if "AGGRESSIVE" in text else (0.7 if "CONSERVATIVE" in text else 1.2)
-                    self.symbol_tp_multipliers[symbol] = mul
-                    self.symbol_tp_multiplier_expire[symbol] = datetime.now() + timedelta(minutes=30)
-                    return text
-                elif r.status_code == 503:
-                    if attempt < 2: time.sleep(5)
-                else:
-                    return f"⚠️ Gemini API Error: {r.status_code} - {r.text}"
-            return "⚠️ Gemini API Error: 503 - Server Overloaded"
+                try:
+                    r = requests.post(url, json=payload, timeout=60)
+                    
+                    if r.status_code == 200:
+                        resp = r.json()
+                        text = resp.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                        if not text: return "AI ไม่ตอบสนองเนื้อหา"
+                        
+                        # Parse Multiplier
+                        mul  = 1.8 if "AGGRESSIVE" in text else (0.7 if "CONSERVATIVE" in text else 1.2)
+                        self.symbol_tp_multipliers[symbol] = mul
+                        self.symbol_tp_multiplier_expire[symbol] = datetime.now() + timedelta(minutes=60)
+                        print(f"DEBUG: [{symbol}] Multiplier set to {mul} based on text contains AGGRESSIVE: {'AGGRESSIVE' in text}")
+                        
+                        # Parse Confidence
+                        import re
+                        conf_match = re.search(r"CONFIDENCE:\s*(\d+)", text, re.IGNORECASE)
+                        self.symbol_ai_confidence[symbol] = int(conf_match.group(1)) if conf_match else 70
+                        
+                        # Parse Exit Advice
+                        if "[EXIT_ADVICE: YES]" in text.upper():
+                            self.notify(f"⚠️ *[AI_ADVICE/{symbol}]* AI ตรวจพบสัญญาณเทรนด์เปลี่ยน! แนะนำให้พิจารณาปิดทำกำไร (ใช้คำสั่ง /CLOSEBASKET ได้ครับ)", telegram=True)
+                        
+                        return text
+                    elif r.status_code == 503:
+                        if attempt < len(delays):
+                            wait = delays[attempt]
+                            time.sleep(wait)
+                    else:
+                        if attempt < len(delays):
+                            wait = delays[attempt]
+                            time.sleep(wait)
+                        else:
+                            return f"⚠️ Gemini API Error: {r.status_code} - {r.text}"
+                except Exception as e:
+                    if attempt < len(delays):
+                        wait = delays[attempt]
+                        time.sleep(wait)
+                    else:
+                        raise e
+            return "⚠️ Gemini API Error: Persistent Failures after Retries"
         except Exception as e:
             msg = f"⚠️ AI Analysis Error ({symbol}): {str(e)}"
             print(f"\n{msg}")
@@ -1398,7 +1432,7 @@ You must reply STRICTLY in JSON format. Use the following schema:
         try:
             self.ai_in_progress[symbol] = True
             text = self.get_ai_market_analysis(symbol, ctx)
-            self.notify(f"🤖 *[AI/{symbol}]*\n{text}", telegram=False)
+            self.notify(f"🤖 *[AI/{symbol}]*\n{text}", telegram=True)
         except Exception as e: print(f"⚠️ AI bg error: {e}")
         finally: self.ai_in_progress[symbol] = False
 
@@ -1414,8 +1448,12 @@ You must reply STRICTLY in JSON format. Use the following schema:
         basket_tp = len(scalp_pos) * tp_per_order
 
         if total_profit >= basket_tp:
-            self.notify(f"🎯 *[LAYER/{symbol}] Basket TP ${total_profit:.2f}!* (เป้า ${basket_tp:.2f}) ปิด {len(scalp_pos)} ไม้...")
-            self._close_all_scalp(symbol, scalp_pos, tick, reason="LAYER_BASKET_TP")
+            now = datetime.now()
+            last_a = self.last_basket_alert.get(symbol, datetime.min)
+            if (now - last_a).total_seconds() >= 900: # Notify every 15 mins
+                self.notify(f"💰 *[PROFIT_ALERT/{symbol}]* กำไรกลุ่มถึงเป้าแล้ว! Current: *${total_profit:.2f}* (เป้า ${basket_tp:.2f})\n"
+                            f"ปิดทำกำไรเลยไหม? พิมพ์ `/CLOSEBASKET` เพื่อสั่งปิดครับ", telegram=True)
+                self.last_basket_alert[symbol] = now
             return
 
         df = self.get_data(symbol, mt5.TIMEFRAME_M15, 200)
@@ -1529,36 +1567,44 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         print(f"\n❌ [{symbol}] ไม่พบใน MT5"); continue
 
                     all_pos = mt5.positions_get(symbol=symbol) or []
-                    s_magic = config.MAGIC_NUMBER; g_magic = config.GRID_MAGIC_NUMBER
-                    our_pos  = [p for p in all_pos if p.magic in (s_magic, g_magic)]
-                    open_cnt = sum(1 for p in our_pos if p.magic == s_magic)
+                    our_pos  = [p for p in all_pos if p.magic == config.MAGIC_NUMBER]
+                    open_cnt = len(our_pos)
+
+                    # 1. Fetch Market State (ALWAYS RUN for AI reporting and tracking)
+                    m15d = self.get_m15_market_state(symbol)
+                    (signals, rsi, ema_dist, atr_val, pattern, volatility, dow,
+                     macd, bb_pos, smc_fvg, smc_zone, session,
+                     rel_vol, xau_str, usd_str, fvg_entry, b_high, b_low,
+                     ote_zone, sd_targets) = m15d
+
+                    if rsi is None or atr_val is None:
+                        print(f"\r[{symbol}] ⏳ รอ Data M15...     ", end="", flush=True); continue
+
+                    h4=self.get_h4_trend(symbol); h1=self.get_h1_trend(symbol); m30=self.get_m30_trend(symbol)
+                    vol_ok = rel_vol > 1.1
+
+                    # 2. AI Market Analysis Report (Background Trigger - Runs every hour)
+                    last_ai = self.last_ai_report_time.get(symbol, datetime.now()-timedelta(hours=5))
+                    if (datetime.now()-last_ai).total_seconds() >= 3600 and not self.ai_in_progress.get(symbol):
+                        tk = mt5.symbol_info_tick(symbol)
+                        if tk:
+                            self.executor.submit(self._run_ai_bg, symbol, {
+                                "price":(tk.ask+tk.bid)/2,"rsi":rsi,"macd":macd,
+                                "trend":f"H4:{h4}/H1:{h1}/M30:{m30}","session":session})
+                        self.last_ai_report_time[symbol] = datetime.now()
 
                     if our_pos:
-                        df_t = self.get_data(symbol, mt5.TIMEFRAME_M15, 50)
-                        if df_t is not None:
-                            df_t = self.add_indicators(df_t)
-                            atr_t= df_t.iloc[-1]['atr']
-                            for pos in our_pos:
-                                if pos.magic == s_magic:
-                                    if getattr(config,'ENABLE_TRAILING_STOP',False): self.manage_trailing_stop(symbol, pos, atr_t)
-                                    if getattr(config,'ENABLE_HEDGE',True): self.check_and_trigger_hedge(symbol, pos, atr_t)
+                        for pos in our_pos:
+                            if pos.magic == s_magic:
+                                if getattr(config,'ENABLE_TRAILING_STOP',False): self.manage_trailing_stop(symbol, pos, atr_val)
+                                if getattr(config,'ENABLE_HEDGE',True): self.check_and_trigger_hedge(symbol, pos, atr_val)
+                        
+                        # Basket and Zone SL logic using current state
+                        self.check_layer_basket_and_zone_sl(symbol, smc_zone, atr_val)
 
                     self.check_virtual_sl()
-
-                    if open_cnt > 0:
-                        try:
-                            _df_z = self.get_data(symbol, mt5.TIMEFRAME_M15, 200)
-                            _atr_z = atr_t if 'atr_t' in dir() else (self.add_indicators(_df_z).iloc[-1]['atr'] if _df_z is not None else 0.01)
-                            _rh = _df_z['high'].rolling(50).max().iloc[-1]
-                            _rl = _df_z['low'].rolling(50).min().iloc[-1]
-                            _eq = (_rh + _rl) / 2
-                            _tk = mt5.symbol_info_tick(symbol)
-                            _mid = (_tk.ask + _tk.bid) / 2 if _tk else 0
-                            _z = ("Premium" if _mid > _eq + (_rh - _eq) * 0.2 else ("Discount" if _mid < _eq - (_eq - _rl) * 0.2 else "Equilibrium"))
-                            self.check_layer_basket_and_zone_sl(symbol, _z, _atr_z)
-                        except Exception as _e: pass
-
                     self.check_and_update_db(symbol)
+
                     if self.global_recovery_active: continue
 
                     if symbol == "XAUUSDc" and getattr(config, 'ENABLE_GOLD_SESSION_FILTER', False):
@@ -1573,24 +1619,28 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         if diff < cd_m:
                             print(f"\r[{symbol}] ⏳ Cooldown {int((cd_m-diff)*60)}s     ", end="", flush=True); continue
 
-                    m15d = self.get_m15_market_state(symbol)
-                    (signals, rsi, ema_dist, atr_val, pattern, volatility, dow,
-                     macd, bb_pos, smc_fvg, smc_zone, session,
-                     rel_vol, xau_str, usd_str, fvg_entry, b_high, b_low,
-                     ote_zone, sd_targets) = m15d
-
-                    if rsi is None or atr_val is None:
-                        print(f"\r[{symbol}] ⏳ รอ Data M15...     ", end="", flush=True); continue
-
-                    h4=self.get_h4_trend(symbol); h1=self.get_h1_trend(symbol); m30=self.get_m30_trend(symbol)
-                    vol_ok = rel_vol > 1.1
-
-                    self.run_grid(symbol, atr_val=atr_val)
 
                     s_cfg      = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
-                    max_orders = s_cfg.get('max_scalp_orders',2)
-                    if open_cnt >= max_orders:
-                        self.log_throttled(f"⛔ Max Orders {open_cnt}/{max_orders}", symbol, throttle_sec=120)
+                    max_orders = s_cfg.get('max_scalp_orders', 2)
+                    
+                    # [AI] Dynamic Order Limit (Bonus for Aggressive Bias)
+                    ai_mul = self.symbol_tp_multipliers.get(symbol, 1.0)
+                    ai_conf = self.symbol_ai_confidence.get(symbol, 0)
+                    bonus = 0
+                    if symbol == "XAUUSDc" and ai_conf >= 70:
+                        if ai_mul >= 1.8:
+                            bonus = 2
+                        elif ai_mul >= 1.2:
+                            bonus = 1
+                    
+                    actual_limit = max_orders + bonus
+                    
+                    if loop % 10 == 1:
+                        print(f"DEBUG: [{symbol}] Cnt:{open_cnt} Lim:{max_orders} Bonus:{bonus} (Mul:{ai_mul:.1f} Conf:{ai_conf} Gold:{symbol=='XAUUSDc'})")
+                    
+                    if open_cnt >= actual_limit:
+                        bonus_str = f" (+AI Bonus {bonus})" if bonus > 0 else ""
+                        self.log_throttled(f"⛔ Max Orders {open_cnt}/{actual_limit}{bonus_str}", symbol, throttle_sec=120)
                         continue
 
                     if getattr(config,'ENABLE_NEWS_FILTER',False) and self.check_news_forexfactory():
@@ -1603,8 +1653,14 @@ You must reply STRICTLY in JSON format. Use the following schema:
                     if not hasattr(self, 'ai_cached_signal'): self.ai_cached_signal = {}
 
                     if ai_mode:
-                        if (datetime.now() - self.ai_last_decision_time.get(symbol, datetime.min)).total_seconds() > 840:
-                            print(f"\n[{symbol}] 🤖 กำลังถาม AI (Gemini) กรุณารอสักครู่...")
+                        interval = getattr(config, 'AI_CHECK_INTERVAL', 1800)
+                        elapsed = (datetime.now() - self.ai_last_decision_time.get(symbol, datetime.min)).total_seconds()
+                        
+                        # Market Interest Filter: Only ask AI if there is a potential setup to save precious API quota
+                        is_interesting = (smc_zone != 'Equilibrium') or (rsi < 40) or (rsi > 60)
+                        
+                        if elapsed > interval and is_interesting:
+                            print(f"\n[{symbol}] 🤖 Market interesting ({smc_zone}/RSI:{rsi:.1f}) — Asking AI for decision...")
                             tk = mt5.symbol_info_tick(symbol)
                             
                             df_h1_ctx = self.get_data(symbol, mt5.TIMEFRAME_H1, 50)
@@ -1660,20 +1716,39 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         print(f"\r[{symbol}] ❌ {sig} rejected: {reason}     ", end="", flush=True)
 
                     if direction:
-                        now_cnt = self.count_open_orders(symbol)
-                        if now_cnt < max_orders:
-                            b_high = float(cached.get('box_high', 0.0))
-                            b_low  = float(cached.get('box_low', 0.0))
+                        b_high = float(cached.get('box_high', 0.0))
+                        b_low  = float(cached.get('box_low', 0.0))
+                        is_conso_signal = (b_high > 0 and b_low > 0)
+                        
+                        if is_conso_signal:
+                            now_cnt = self.count_open_orders(symbol, comment_filter="_CONSO")
+                            current_max = 1
+                        else:
+                            now_cnt = self.count_open_orders(symbol, exclude_filter="_CONSO")
+                            current_max = max_orders
+
+                        if now_cnt < current_max:
+                            if is_limit_order:
+                                # New Pending Order from AI -> Clean old ones first
+                                self.cancel_pending_orders(symbol)
+                                
+                                # Independent Pending Limit Check
+                                pend_c = self.count_pending_orders(symbol)
+                                max_p  = getattr(config, 'MAX_PENDING_PER_SYMBOL', 5)
+                                if pend_c >= max_p:
+                                    print(f"\r[{symbol}] 🚫 Max Pending reached ({pend_c}/{max_p})     ", end="", flush=True)
+                                    continue
+                            
                             target_tp = float(cached.get('profit_target', 0.0))
                             
                             if is_limit_order and limit_price > 0:
                                 p_type = mt5.ORDER_TYPE_BUY_LIMIT if direction == 'BUY' else mt5.ORDER_TYPE_SELL_LIMIT
                                 ticket = self.execute_trade(symbol, direction, atr_val, order_index=now_cnt+1, 
                                                            smc_zone=smc_zone, pending_type=p_type, pending_price=limit_price,
-                                                           box_high=b_high, box_low=b_low, manual_tp=target_tp)
+                                                           box_high=b_high, box_low=b_low, manual_tp=target_tp, ai_conf=conf)
                             else:
                                 ticket = self.execute_trade(symbol, direction, atr_val, order_index=now_cnt+1, 
-                                                           smc_zone=smc_zone, box_high=b_high, box_low=b_low, manual_tp=target_tp)
+                                                           smc_zone=smc_zone, box_high=b_high, box_low=b_low, manual_tp=target_tp, ai_conf=conf)
                                 
                             if ticket:
                                 self.mart_state.pop(symbol, None)
@@ -1687,15 +1762,7 @@ You must reply STRICTLY in JSON format. Use the following schema:
 
                     self.place_pending_orders(symbol, signals, atr_val, smc_fvg, fvg_entry, b_high, b_low)
 
-                    last_ai = self.last_ai_report_time.get(symbol, datetime.now()-timedelta(hours=5))
-                    if (datetime.now()-last_ai).total_seconds() >= 3600 and not self.ai_in_progress.get(symbol):
-                        _,_,gf = self.get_grid_positions(symbol)
-                        tk = mt5.symbol_info_tick(symbol)
-                        if tk:
-                            self.executor.submit(self._run_ai_bg, symbol, {
-                                "price":(tk.ask+tk.bid)/2,"rsi":rsi,"macd":macd,
-                                "trend":f"H4:{h4}/H1:{h1}/M30:{m30}","profit":gf,"session":session})
-                        self.last_ai_report_time[symbol] = datetime.now()
+
 
                     h1i="🟢" if h1=='UP' else "🔴"
                     m15i="🟢" if 'BUY' in signals else ("🔴" if 'SELL' in signals else "⚪")

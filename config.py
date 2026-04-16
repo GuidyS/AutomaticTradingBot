@@ -37,19 +37,6 @@ _PROFILES = {
         "be_offset_pips":     30,
         "trail_activation":   1.2,
         "trail_step":         0.5,
-        # Grid
-        "grid_symbol":       "XAUUSDc",
-        "grid_lot":          0.01,
-        "grid_spacing_pips": 300,
-        "grid_tp_pips":      800,
-        "grid_sl_pips":      500,
-        "grid_max_levels":   3,
-        "grid_max_loss":    -50.0,
-        "grid_basket_tp":    5.0,
-        "grid_basket_sl":   -10.0,
-        "grid_symmetric_max_levels": 2,
-        "grid_atr_multiplier":  1.5,
-        "grid_min_spacing_pips": 150,
         # Layer control
         "max_scalp_orders":  3,
         "min_scalp_spacing": 50,
@@ -78,7 +65,8 @@ ATR_PERIOD             = 14
 RISK_MODE              = "DIVISOR"   # Options: "FIXED", "PERCENT", "DIVISOR"
 LOT_DIVISOR            = 10000       # Lot size = Balance / 10000
 RISK_PERCENT           = 1.0         # Used only if RISK_MODE = "PERCENT"
-FIXED_LOT              = 0.01        # Used only if RISK_MODE = "FIXED"
+FIXED_LOT              = 0.02        # Used only if RISK_MODE = "FIXED"
+MIN_LOT                = 0.02        # ขั้นต่ำเริ่มที่ 0.02
 MAX_LOT                = 2.0
 MAX_DAILY_LOSS_USD     = 200.0
 
@@ -100,14 +88,15 @@ SCALP_SELL_RSI_MAX       = 60
 MIN_RR_RATIO             = 1.2    # ปรับเหลือ 1.2 จะเข้าออเดอร์ง่ายขึ้น
 ENABLE_MULTI_TP          = True   # เปิดระบบ TP 1, 2, 3
 MULTI_TP_RATIOS          = [0.4, 0.3, 0.3]  # แบ่ง Lot 40% / 30% / 30%
-MULTI_TP_RR_LEVELS       = [0.8, 1.5, 3.0]  # ระดับ TP ในมุมมอง Risk:Reward (TP1, TP2, TP3)
+MULTI_TP_RR_LEVELS       = [1, 1.5, 2.5]  # ระดับ TP ในมุมมอง Risk:Reward (TP1, TP2, TP3)
 
 # [AI] Fully AI-Driven Trading
 ENABLE_AI_TRADING_MODE   = True
 AI_PROVIDER              = "GEMINI"
 AI_API_KEY               = os.getenv('GEMINI_API_KEY', '') # ไปตั้งค่าในไฟล์ .env ถ้ามี หรือใส่ตรงนี้ก็ได้
 AI_MODEL                 = "gemini-2.5-flash"
-AI_CONFIDENCE_THRESHOLD  = 75
+AI_CONFIDENCE_THRESHOLD  = 70
+AI_CHECK_INTERVAL        = 3600   # ความถี่ในการถาม AI (วินาที) - ตั้งไว้ 1 ชม. เพื่อประหยัดโควตาและลดการใช้ Token
 
 
 ENABLE_GOLD_SESSION_FILTER = False 
@@ -119,12 +108,6 @@ ENABLE_MARTINGALE   = False
 MART_MAX_LEVEL      = 3
 MART_LOT_MULTIPLIER = 1.5
 
-ENABLE_GRID       = False
-GRID_MAGIC_NUMBER = 20250416
-GRID_MODE         = "AUTO"
-GRID_RISK_MODE    = "PERCENT"
-GRID_RISK_PERCENT = 0.1
-
 TRADE_TIME_START   = 0
 TRADE_TIME_END     = 23
 ENABLE_NEWS_FILTER = True
@@ -132,8 +115,6 @@ NEWS_MODE          = "AVOID"
 NEWS_MINUTES_BEFORE = 30
 NEWS_MINUTES_AFTER  = 30
 
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
-LINE_USER_ID              = os.getenv('LINE_USER_ID', '')
 TELEGRAM_BOT_TOKEN        = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID          = os.getenv('TELEGRAM_CHAT_ID', '')
 
