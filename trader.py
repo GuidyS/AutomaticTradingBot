@@ -14,7 +14,7 @@ import config
 import database
 
 # ============================================================
-# SelfLearningEA v4 — Intraday Edition (M15 Focus)
+# SelfLearningEA v6.1 — Hybrid AI Edition (M15 Focus)
 # ============================================================
 class SelfLearningEA:
 
@@ -52,6 +52,8 @@ class SelfLearningEA:
         self._telegram_offset = None
         self.symbol_ai_confidence = {}
         self.last_basket_alert = {}
+        self.ai_global_cooldown_until = 0.0
+        self.last_execution_time = {} # (symbol, direction) -> timestamp
 
     def log_throttled(self, msg, symbol=None, throttle_sec=60):
         key = (symbol, msg[:40])
@@ -59,6 +61,14 @@ class SelfLearningEA:
         if now - self.last_log_time.get(key, 0) > throttle_sec:
             print(f"\n{msg}")
             self.last_log_time[key] = now
+
+    def check_ai_cooldown(self):
+        """Check if AI is currently under global rate limit cooldown."""
+        now = time.time()
+        if now < self.ai_global_cooldown_until:
+            wait_sec = int(self.ai_global_cooldown_until - now)
+            return True, wait_sec
+        return False, 0
 
     def _init_stats(self, symbol):
         if symbol not in self.trade_stats:
@@ -650,7 +660,8 @@ class SelfLearningEA:
             lot = round(lot / sym_info.volume_step) * sym_info.volume_step
             max_l = getattr(config, 'MAX_LOT', 0.5)
             min_l = getattr(config, 'MIN_LOT', 0.01)
-            lot   = max(min_l, min(lot, max_l))
+            if lot < min_l: return 0.0
+            lot = min(lot, max_l)
             return max(sym_info.volume_min, min(lot, sym_info.volume_max))
 
         r_pct      = risk_pct if risk_pct is not None else config.RISK_PERCENT
@@ -668,7 +679,8 @@ class SelfLearningEA:
             lot = round(lot / sym_info.volume_step) * sym_info.volume_step
             max_l = getattr(config, 'MAX_LOT', 0.5)
             min_l = getattr(config, 'MIN_LOT', 0.01)
-            lot   = max(min_l, min(lot, max_l))
+            if lot < min_l: return 0.0
+            lot = min(lot, max_l)
             return max(sym_info.volume_min, min(lot, sym_info.volume_max))
         return config.FIXED_LOT
 
@@ -698,6 +710,16 @@ class SelfLearningEA:
         if not all_o: return 0
         return sum(1 for o in all_o if o.symbol.upper() == symbol and o.magic == config.MAGIC_NUMBER)
 
+    def has_pending_by_direction(self, symbol, direction):
+        """Check if any pending order exists in a specific direction."""
+        symbol = symbol.upper()
+        orders = mt5.orders_get(symbol=symbol) or []
+        for o in orders:
+            if o.magic != config.MAGIC_NUMBER: continue
+            od = 'BUY' if o.type in [mt5.ORDER_TYPE_BUY_LIMIT, mt5.ORDER_TYPE_BUY_STOP] else 'SELL'
+            if od == direction: return True
+        return False
+
     def cancel_pending_orders(self, symbol):
         symbol = symbol.upper()
         orders = mt5.orders_get(symbol=symbol)
@@ -722,6 +744,9 @@ class SelfLearningEA:
         return si.point * 10 if si else 0.0001
 
     def check_trade_safety(self, symbol, direction, price, is_scalp=False, smc_zone=None, ignore_spacing=False):
+        pip   = self.get_symbol_pip(symbol)
+        s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
+        min_d = s_cfg.get('min_scalp_spacing', 15) * pip
         magics = [config.MAGIC_NUMBER]
 
         all_now = mt5.positions_get(symbol=symbol) or []
@@ -826,6 +851,18 @@ class SelfLearningEA:
         return max(0.8, min(target_rr, 2.5))
 
     def execute_trade(self, symbol, direction, atr_val, order_index=1, pending_type=None, pending_price=0.0, smc_zone=None, comment=None, box_high=0.0, box_low=0.0, manual_tp=0.0, ai_conf=0):
+        # 1. Anti-Stacking Check (Cooldown per direction)
+        now = time.time()
+        last_t = self.last_execution_time.get((symbol, direction), 0)
+        if now - last_t < 30: # 30s cooldown
+            return None
+
+        # 2. Priority Check: Don't place Market if Pending exists for this direction
+        if pending_type is None: # This is a Market Order request
+            if self.has_pending_by_direction(symbol, direction):
+                self.log_throttled(f"🚫 [{symbol}] Priority: Pending Order already exists for {direction} → Blocking Market Entry", symbol)
+                return None
+
         tick = mt5.symbol_info_tick(symbol)
         if tick is None: return None
 
@@ -888,6 +925,10 @@ class SelfLearningEA:
             total_lot = self.normalize_lot(symbol, total_lot)
         else:
             total_lot = self.calculate_lot(symbol, sl_dist=sl_dist)
+            
+        if not total_lot or total_lot <= 0:
+            self.log_throttled(f"⚠️ [{symbol}] Lot {total_lot} < MIN_LOT ({getattr(config,'MIN_LOT',0.01)}) → ข้าม (Filter Low Lot)", symbol, throttle_sec=60)
+            return None
 
         if use_multi_tp:
             ratios = getattr(config, 'MULTI_TP_RATIOS', [0.4, 0.3, 0.3])
@@ -919,6 +960,7 @@ class SelfLearningEA:
                 
                 ticket = self._send_order(symbol, direction, lvl_lot, sl, lvl_tp, config.MAGIC_NUMBER, lvl_comment, pending_type, pending_price)
                 if ticket:
+                    self.last_execution_time[(symbol, direction)] = time.time()
                     if not first_ticket: first_ticket = ticket
                     self.notify(f"🟢 *[{symbol}] {direction} TP{i+1}* Lot:{lvl_lot} | SL:{sl:.2f} | TP:{lvl_tp:.2f} | RR:{rr_lvl}")
             return first_ticket
@@ -931,6 +973,7 @@ class SelfLearningEA:
             
             ticket = self._send_order(symbol, direction, total_lot, sl, structural_tp, config.MAGIC_NUMBER, order_comment, pending_type, pending_price)
             if ticket:
+                self.last_execution_time[(symbol, direction)] = time.time()
                 s_cfg = config._PROFILES.get(symbol, config._PROFILES["XAUUSDc"])
                 self.notify(f"🟢 *[{symbol}] {direction}* #{order_index}/{s_cfg.get('max_scalp_orders',2)}\n"
                             f"Lot:{total_lot} | SL:{sl:.2f} | TP:{structural_tp:.2f} | RR:{structural_rr:.2f}")
@@ -1198,13 +1241,21 @@ class SelfLearningEA:
         return managed, total
 
     def run_global_recovery_exit(self):
+        """
+        Safety Brake: Only releases the 'Recovery Mode' if drawdown returns to a safe level.
+        Does NOT automatically close any positions as per user request (v5.6).
+        """
         if self.global_recovery_active:
-            self.global_recovery_active = False
-            try: database.set_bot_setting("global_recovery_active", False)
+            try:
+                acc = mt5.account_info()
+                if acc:
+                    dd = (acc.equity - acc.balance) / acc.balance * 100
+                    # Release brake only if drawdown returns to -5.0% (Safe zone)
+                    if dd > -5.0:
+                        self.global_recovery_active = False
+                        database.set_bot_setting("global_recovery_active", False)
+                        self.notify("✅ *[RECOVERY_EXIT]* พอร์ตกลับมาอยู่ในระดับปลอดภัยแล้ว (-5%) → ปลดล็อคระบบเทรดปกติ")
             except: pass
-        return False
-
-        pass
         return False
 
     def shave_losing_positions(self, symbol):
@@ -1284,12 +1335,18 @@ class SelfLearningEA:
         if not api_key:
             return {"signal": "HOLD", "reason": "No API Key configured"}
             
+        is_cooldown, wait_time = self.check_ai_cooldown()
+        if is_cooldown:
+            return {"signal": "HOLD", "reason": f"AI Rate Limit Cooldown ({wait_time}s remaining)"}
+
         import time
-        model = getattr(config, 'AI_MODEL', 'gemini-2.5-flash')
-        # Ensure we use valid model identifiers for the 2026 environment
-        if '3.1' in model: model = 'gemini-3.1-pro-preview'
-        elif '1.5-flash' in model: model = 'gemini-2.5-flash'
-        elif '1.5-pro' in model: model = 'gemini-2.5-pro'
+        model = getattr(config, 'AI_MODEL', 'gemini-2.0-flash-lite')
+        
+        # Mapping to 2026 Valid Identifiers (Focusing on Lite for RPM stability)
+        if '3.' in model: model = 'gemini-3.1-flash-lite-preview'
+        elif '2.5' in model: model = 'gemini-2.5-flash-lite'
+        elif '2.0' in model: model = 'gemini-2.0-flash-lite'
+        else: model = 'gemini-flash-lite-latest'
         
         prompt = f"""
 You are an expert algorithmic Forex trading AI specializing in Smart Money Concepts (SMC), Price Action, and specifically the 7-Step ICT Consolidation Strategy.
@@ -1317,7 +1374,7 @@ You must reply STRICTLY in JSON format. Use the following schema:
   "box_high": 0.0, // High of the Original Consolidation box
   "box_low": 0.0,  // Low of the Original Consolidation box
   "confidence": 85, // integer from 0 to 100
-  "reason": "Detailed explanation of which stage (1-7) we are currently in"
+  "reason": "Detailed explanation of which stage (1-7) we are currently in. If confidence is very high, explain why we should enter NOW."
 }}
 """
         payload = {
@@ -1325,11 +1382,11 @@ You must reply STRICTLY in JSON format. Use the following schema:
             "generationConfig": {"temperature": 0.2, "response_mime_type": "application/json"}
         }
 
-        fallback_models = [model, 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3.1-pro-preview']
-        delays = [2, 4, 8, 16]
+        fallback_models = [model, 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest']
+        delays = [5, 10, 20, 30]
         for attempt in range(len(delays) + 1):
             current_model = fallback_models[attempt] if attempt < len(fallback_models) else model
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1/models/{current_model}:generateContent?key={api_key}"
             try:
                 r = requests.post(url, json=payload, timeout=60)
                 if r.status_code == 200:
@@ -1341,6 +1398,15 @@ You must reply STRICTLY in JSON format. Use the following schema:
                     
                     data = json.loads(text)
                     return data
+                elif r.status_code == 429:
+                    print(f"🚨 [{symbol}] Gemini {current_model} Rate Limit (429).")
+                    if getattr(config, 'ENABLE_OLLAMA_FALLBACK', False):
+                        print(f"💎 [{symbol}] Google API unavailable - Switching to Local AI (Ollama/Llama 3.1)...")
+                        return self.call_ollama_ai(prompt, is_json=True)
+                    
+                    self.ai_global_cooldown_until = time.time() + 1800 
+                    print(f"🚨 [{symbol}] Manual Silence Activated (30m).")
+                    break
                 elif r.status_code == 503:
                     if attempt < len(delays):
                         wait = delays[attempt]
@@ -1357,12 +1423,19 @@ You must reply STRICTLY in JSON format. Use the following schema:
                 if attempt < len(delays):
                     wait = delays[attempt]
                     time.sleep(wait)
-                
-        return None
+        
+        if time.time() < self.ai_global_cooldown_until:
+            return {"signal": "HOLD", "reason": "AI on cooldown (429 Rate Limit)"}
+        return {"signal": "HOLD", "reason": "AI Error: Persistent Failures"}
 
     def get_ai_market_analysis(self, symbol, ctx):
         api_key = getattr(config, 'AI_API_KEY', '')
         if not api_key: return "ไม่สามารถติดต่อ AI ได้ (ไม่มี API Key)"
+        
+        is_cooldown, wait_time = self.check_ai_cooldown()
+        if is_cooldown:
+            return f"AI Cooldown active ({wait_time}s remaining)"
+
         try:
             prompt = (f"วิเคราะห์ {symbol}: ราคา={ctx['price']:.2f}, RSI={ctx['rsi']:.1f}, "
                       f"MACD={ctx['macd']:.4f}, Trend={ctx['trend']}, "
@@ -1371,13 +1444,18 @@ You must reply STRICTLY in JSON format. Use the following schema:
                       f"และระบุ [CONFIDENCE: 0-100] กำกับความมั่นใจมาด้วย\n"
                       f"**พิเศษ**: หากเห็นสัญญาณเทรนด์เปลี่ยนขณะที่มีกำไร ให้ใส่ [EXIT_ADVICE: YES] มาด้วย (ถ้าไม่มีให้หยุดไว้ หรือใส่ NO)")
 
-            model = getattr(config, 'AI_MODEL', 'gemini-2.5-flash')
-            if '3.1' in model: model = 'gemini-3.1-pro-preview'
-            elif '1.5' in model: model = model.replace('1.5', '2.5')
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            model = getattr(config, 'AI_MODEL', 'gemini-2.0-flash-lite')
+            if 'lite' in model: pass
+            elif '3.' in model: model = 'gemini-3.1-flash-lite-preview'
+            elif '2.5' in model: model = 'gemini-2.5-flash-lite'
+            elif '2.0' in model: model = 'gemini-2.0-flash-lite'
+            else: model = 'gemini-flash-lite-latest'
             
-            delays = [2, 4, 8, 16]
+            fallback_models = [model, 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest']
+            delays = [5, 10, 20, 30]
             for attempt in range(len(delays) + 1):
+                current_model = fallback_models[attempt] if attempt < len(fallback_models) else model
+                url = f"https://generativelanguage.googleapis.com/v1/models/{current_model}:generateContent?key={api_key}"
                 payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.5}}
                 try:
                     r = requests.post(url, json=payload, timeout=60)
@@ -1391,7 +1469,6 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         mul  = 1.8 if "AGGRESSIVE" in text else (0.7 if "CONSERVATIVE" in text else 1.2)
                         self.symbol_tp_multipliers[symbol] = mul
                         self.symbol_tp_multiplier_expire[symbol] = datetime.now() + timedelta(minutes=60)
-                        print(f"DEBUG: [{symbol}] Multiplier set to {mul} based on text contains AGGRESSIVE: {'AGGRESSIVE' in text}")
                         
                         # Parse Confidence
                         import re
@@ -1403,9 +1480,19 @@ You must reply STRICTLY in JSON format. Use the following schema:
                             self.notify(f"⚠️ *[AI_ADVICE/{symbol}]* AI ตรวจพบสัญญาณเทรนด์เปลี่ยน! แนะนำให้พิจารณาปิดทำกำไร (ใช้คำสั่ง /CLOSEBASKET ได้ครับ)", telegram=True)
                         
                         return text
+                    elif r.status_code == 429:
+                        print(f"🚨 [{symbol}] Gemini {current_model} Rate Limit (429).")
+                        if getattr(config, 'ENABLE_OLLAMA_FALLBACK', False):
+                            print(f"💎 [{symbol}] API Throttled - Asking Local AI for Market Analysis...")
+                            return self.call_ollama_ai(prompt, is_json=False)
+                        
+                        self.ai_global_cooldown_until = time.time() + 1800
+                        print(f"🚨 [{symbol}] AI Analysis silencing for 30m.")
+                        break
                     elif r.status_code == 503:
                         if attempt < len(delays):
                             wait = delays[attempt]
+                            print(f"[{symbol}] Gemini {current_model} High Demand (503) (Bg). Retrying in {wait}s... ({attempt+1}/{len(delays)})")
                             time.sleep(wait)
                     else:
                         if attempt < len(delays):
@@ -1419,7 +1506,9 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         time.sleep(wait)
                     else:
                         raise e
-            return "⚠️ Gemini API Error: Persistent Failures after Retries"
+            if time.time() < self.ai_global_cooldown_until:
+                return "⚠️ AI Market Analysis on Cooldown (Rate Limit 429)"
+            return "⚠️ AI Market Analysis: Persistent Failures"
         except Exception as e:
             msg = f"⚠️ AI Analysis Error ({symbol}): {str(e)}"
             print(f"\n{msg}")
@@ -1495,19 +1584,53 @@ You must reply STRICTLY in JSON format. Use the following schema:
                                   "position":pos.ticket,"price":float(close_price),"deviation":30,"magic":pos.magic,
                                   "comment":reason,"type_time":mt5.ORDER_TIME_GTC,"type_filling":mt5.ORDER_FILLING_FOK})
             if not (res and res.retcode == mt5.TRADE_RETCODE_DONE): failed.append(pos.ticket)
-        if failed: print(f"⚠️ [{symbol}] {reason}: ปิดไม่ได้ tickets {failed}")
         else: self.last_close_time[symbol] = datetime.now()
+
+    def call_ollama_ai(self, prompt, is_json=True):
+        """
+        Communicates with local Ollama API as a high-resilience fallback.
+        """
+        try:
+            model = getattr(config, 'OLLAMA_MODEL', 'llama3.1:latest')
+            url = getattr(config, 'OLLAMA_API_URL', 'http://localhost:11434/api/generate')
+            payload = {"model": model, "prompt": prompt, "stream": False}
+            
+            r = requests.post(url, json=payload, timeout=90) # Local takes longer
+            if r.status_code == 200:
+                full_text = r.json().get('response', '')
+                if not is_json: return f"Local AI Analysis:\n{full_text}"
+                
+                # Try to extract JSON from Llama's response
+                import json
+                text = full_text.strip('` \n')
+                if text.startswith('json'): text = text[4:].strip()
+                try: 
+                    return json.loads(text)
+                except:
+                    # Search for any { ... } block
+                    match = re.search(r'(\{.*\})', text, re.DOTALL)
+                    if match: return json.loads(match.group(1))
+                    return {"signal": "HOLD", "reason": f"Local AI Parse Error: {text[:50]}"}
+            return {"signal": "HOLD", "reason": f"Ollama HTTP Error: {r.status_code}"}
+        except Exception as e:
+            return {"signal": "HOLD", "reason": f"Ollama Exception: {str(e)}"}
 
     def run(self):
         if not self.init_mt5(): return
         database.setup_db()
-        self.notify(f"🚀 *[EA v4 Intraday Edition Online]*\nSymbol:{config.SYMBOLS} | Risk:{config.RISK_PERCENT}% | "
+        self.notify(f"🚀 *[EA v6.1 Hybrid AI Edition Online]*\nSymbol:{config.SYMBOLS} | Risk:{config.RISK_PERCENT}% | "
                     f"Hedge:{'ON' if getattr(config,'ENABLE_HEDGE',True) else 'OFF'} | "
                     f"Mart:{'ON' if getattr(config,'ENABLE_MARTINGALE',False) else 'OFF'}")
 
         loop = 0
         self.last_15m_pnl_report = datetime.now()
         self.last_recovery_notify_time = datetime.now() - timedelta(minutes=15)
+        
+        # Staggered AI Start: Don't hit AI immediately on reboot to avoid 429 RPM limits
+        startup_delay = 60 # wait 1 min before first AI request
+        self.last_ai_report_time = {s: datetime.now() - timedelta(seconds=3600-startup_delay) for s in config.SYMBOLS}
+        self.ai_last_decision_time = {s: datetime.now() - timedelta(seconds=getattr(config,'AI_CHECK_INTERVAL',1800)-startup_delay) for s in config.SYMBOLS}
+
         while True:
             try:
                 loop += 1
@@ -1595,7 +1718,7 @@ You must reply STRICTLY in JSON format. Use the following schema:
 
                     if our_pos:
                         for pos in our_pos:
-                            if pos.magic == s_magic:
+                            if pos.magic == config.MAGIC_NUMBER:
                                 if getattr(config,'ENABLE_TRAILING_STOP',False): self.manage_trailing_stop(symbol, pos, atr_val)
                                 if getattr(config,'ENABLE_HEDGE',True): self.check_and_trigger_hedge(symbol, pos, atr_val)
                         
@@ -1692,12 +1815,23 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         conf = cached.get('confidence', 0)
                         threshold = getattr(config, 'AI_CONFIDENCE_THRESHOLD', 70)
                         
-                        signals = []
-                        raw_sig = cached.get('signal', 'HOLD')
+                        # V5.1 Change: Merge AI signals with indicators instead of replacing them
+                        # This allows both pending orders (from indicators/AI) and market orders (from indicators/AI)
+                        ai_raw = cached.get('signal', 'HOLD')
                         limit_price = float(cached.get('limit_price', 0.0))
+                        if conf >= threshold:
+                            if ai_raw not in signals:
+                                signals.append(ai_raw)
                         
-                        if 'BUY' in raw_sig and conf >= threshold: signals.append(raw_sig)
-                        if 'SELL' in raw_sig and conf >= threshold: signals.append(raw_sig)
+                        # [Aggressive Entry] If confidence is very high, force a Market Order alongside any Limit
+                        agg_enabled = getattr(config, 'ENABLE_AGGRESSIVE_AI_ENTRY', False)
+                        agg_thresh  = getattr(config, 'AI_AGGRESSIVE_THRESHOLD', 75)
+                        
+                        if agg_enabled and conf >= agg_thresh and 'LIMIT' in ai_raw:
+                            m_sig = 'BUY' if 'BUY' in ai_raw else 'SELL'
+                            if m_sig not in signals:
+                                signals.append(m_sig)
+                                self.notify(f"🚀 *[Aggressive Entry]* Confidence {conf}% ≥ {agg_thresh}% — Adding Market Order alongside {ai_raw}", telegram=True)
 
                     direction = None
                     is_limit_order = False
@@ -1722,7 +1856,13 @@ You must reply STRICTLY in JSON format. Use the following schema:
                         
                         if is_conso_signal:
                             now_cnt = self.count_open_orders(symbol, comment_filter="_CONSO")
-                            current_max = 1
+                            base_max = 1
+                            double_thresh = getattr(config, 'AI_DOUBLE_ENTRY_THRESHOLD', 85)
+                            if conf >= double_thresh:
+                                base_max = 2 # [V5.3] Double Entry: Allow 2 sets of Multi-TP
+                                if now_cnt == 1:
+                                    print(f"🚀 [High Confidence] Confidence {conf}% >= {double_thresh}% - Allowing second set of Multi-TP")
+                            current_max = base_max
                         else:
                             now_cnt = self.count_open_orders(symbol, exclude_filter="_CONSO")
                             current_max = max_orders
