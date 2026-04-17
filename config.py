@@ -14,7 +14,7 @@ DB_CONFIG = {
     'database': os.getenv('DB_NAME', 'forex_ea')
 }
 
-# 🎯 โฟกัสเฉพาะทองคำ
+# 🎯 โฟกัสเฉพาะทองคำ และ EURUSD
 ACTIVE_SYMBOL = ["XAUUSDc"]
 
 # ============================================================
@@ -38,8 +38,33 @@ _PROFILES = {
         "trail_activation":   1.2,
         "trail_step":         0.5,
         # Layer control
-        "max_scalp_orders":  5,
-        "min_scalp_spacing": 50,
+        "max_layers":        5,
+        "layer_step_pips":   200,   # ระยะห่างไม้แก้ 200 จุด
+        "layer_basket_tp_per_order_usd": 5.0,
+        "max_spread_pips":   40,
+        # Auto-Hedge
+        "hedge_trigger_pips": 400,
+        "hedge_basket_tp":    5.0,
+    },
+    "EURUSDc": {
+        "symbols":           ["EURUSDc"],
+        "strength_pairs":    ["EURUSD","USDJPY","GBPUSD"],
+        # Forex Scalp (15-30 pips)
+        "scalp_tp_pips":     200,   # เป้ากำไร 200 จุด (2.0 pips)
+        "scalp_sl_pips":     120,   # SL 120 จุด (1.2 pips)
+        "scalp_min_sl_pips": 50,
+        "scalp_struct_offset": 20,
+        # ATR
+        "atr_sl_mul":        1.2,
+        "atr_tp_mul":        2.5,
+        # Break-Even / Trail
+        "be_activation_pips": 100,
+        "be_offset_pips":     10,
+        "trail_activation":   1.1,
+        "trail_step":         0.3,
+        # Layer control
+        "max_layers":        3,
+        "layer_step_pips":   100,
         "layer_basket_tp_per_order_usd": 5.0,
         "max_spread_pips":   40,
         # Auto-Hedge

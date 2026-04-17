@@ -1,52 +1,66 @@
-# 🤖 AI-Powered SMC/ICT Hybrid Scalp Bot (v6.1)
+# 🤖 SelfLearningEA v6.1: Hybrid AI Edition (XAUUSD Focus)
 
-![Trading Bot](https://img.shields.io/badge/Strategy-SMC%20%2F%20ICT-gold)
-![AI](https://img.shields.io/badge/AI-Hybrid%20(Gemini%20%2B%20Ollama)-blue)
-![Mode](https://img.shields.io/badge/Mode-Scalp%20Only-red)
-![Series](https://img.shields.io/badge/Series-2026%20Edition-green)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
+[![Trading](https://img.shields.io/badge/Strategy-ICT%20Consolidation-orange.svg)](#)
+[![AI](https://img.shields.io/badge/AI-Gemini%20%2B%20Ollama-green.svg)](#)
 
-ระบบเทรดอัตโนมัติอัจฉริยะที่ออกแบบมาเพื่อ **XAUUSD (Gold)** โดยเฉพาะ ผสานกลยุทธ์สถาบัน (SMC/ICT) เข้ากับพลังการตัดสินใจของเทคโนโลยี **Hybrid AI** (Cloud + Local) เพื่อความแม่นยำและความทนทานสูงสุดต่อข้อจำกัดของ API ในปี 2026
-
-## 🌟 ฟีเจอร์เด่น (v6.1 Hybrid Edition)
-
-### 🧠 ระบบ Hybrid AI อันทรงพลัง
-*   **Dual-Brain Architecture**: ใช้ **Gemini 2.0/2.5 Flash** เป็นหลัก และสลับไปใช้ **Ollama (Llama 3.1)** ในเครื่องคุณทันทีหาก API ของ Google ติด Rate Limit (429)
-*   **Zero-Downtime Analysis**: ไม่พลาดทุกจังหวะสำคัญด้วยระบบสลับ AI อัตโนมัติ ทำให้บอทยังวิเคราะห์ตลาดได้แม้ไม่มีอินเทอร์เน็ตหรือ API ค้าง
-*   **Smart Fallback 5.0**: ระบบจำศีลและสลับรุ่น AI อัจฉริยะ พร้อมการเชื่อมต่อผ่าน Stable Endpoint (`v1`)
-
-### 📊 กลยุทธ์การเทรดขั้นสูง
-*   **7-Step ICT Consolidation**: เข้าเทรดในช่วงราคาพักตัวและการกวาดสภาพคล่อง (Liquidity Sweeps)
-*   **Optimal Trade Entry (OTE)**: ระบบคำนวณจุดเข้าที่ระดับ Fibonacci 62% - 79% อัตโนมัติ
-*   **Bias-Based Scalping**: AI จะกำหนดทิศทาง (Bias) และระดับความเชื่อมั่น (Confidence) เพื่อคัดกรองสัญญาณหลอก
-
-### 🛡️ ความปลอดภัยและบริหารความเสี่ยง
-*   **Safety Brake Recovery**: ระบบกู้พอร์ตอัจฉริยะที่จะ "หยุดออกไม้เพิ่ม" เมื่อ Drawdown สูง แต่จะไม่ปิดไม้ของคุณ เพื่อให้คุณตัดสินใจได้เอง (Non-Closing Mode)
-*   **Virtual Stop Loss**: ซ่อนจุดตัดขาดทุนจากโบรกเกอร์ ป้องกันการโดนล่า SL (Stop-Hunt Protection)
-*   **Multi-TP RR Levels**: ตั้งเป้ากำไร 3 ระดับ พร้อมระบบ Multiplier ตามระดับความมั่นใจของ AI
-
-## 🚀 เริ่มต้นใช้งานแบบด่วน
-
-1.  **ติดตั้งขุมพลัง**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-2.  **ตั้งค่า**: 
-    - ใส่ API Key ใน `.env`
-    - (แนะนำ) ติดตั้ง **Ollama** และโหลด `llama3.1` เพื่อใช้เป็นระบบ AI สำรอง
-3.  **รันระบบ**:
-    ```bash
-    python trader.py
-    ```
-
-## 📂 โครงสร้างโปรเจกต์
-- `trader.py`: หัวใจหลักของระบบ จัดการกลยุทธ์และการเชื่อมต่อ AI
-- `config.py`: ศูนย์กลางการตั้งค่า Risk, AI Model และโปรไฟล์คู่เงิน
-- `database.py`: ระบบจัดเก็บสถิติและประวัติการเทรด (SQLite)
-- `analyze_trades.py`: เครื่องมือสรุปผลกำไรและวิเคราะห์ประสิทธิภาพเชิงลึก
+ระบบเทรดอัตโนมัติ (EA) ขั้นสูงสำหรับ MetaTrader 5 ที่ผสานพลังของ **Institutional Trading (ICT)** และ **Generative AI** เพื่อความแม่นยำและความทนทานสูงสุดในการเทรดทองคำ (XAUUSD)
 
 ---
 
-> [!IMPORTANT]
-> **EA v6.1** ถูกออกแบบมาเพื่อความยืดหยุ่นสูงสุด การเปิดใช้งาน **Ollama** ควบคู่ไปด้วยจะช่วยให้บอทของคุณทำงานได้ราบรื่น 24/7 แม้ติดปัญหาเรื่อง API Quota
+## 🌟 ฟีเจอร์หลัก (Key Features)
 
-**Antigravity Trading System — The Future of Algorithmic Trading (2026)**
+- **Dual AI Engine:** ระบบ Hybrid สลับการใช้งานระหว่าง **Google Gemini 2.0 Flash** (คลาวด์) และ **Ollama/Llama 3.1** (เครื่องผู้ใช้) อัตโนมัติ เพื่อแก้ปัญหา API โควตาเต็ม
+- **ICT 7-Step Strategy:** กลยุทธ์การเทรดตามรอยรายใหญ่ เน้นโซน Consolidation, Liquidity Sweep และ Optimal Trade Entry (OTE)
+- **Advanced Risk Management:**
+    - **Safety Brake (Recovery Mode):** หยุดเทรดอัตโนมัติเมื่อ Drawdown ถึงเกณฑ์ที่กำหนด
+    - **Virtual Stop Loss:** ระบบซ่อนจุดตัดขาดทุนจากโบรกเกอร์ ป้องกันการโดนล่า SL
+    - **News Filter:** กรองข่าวสำคัญระดับ High Impact (USD) อัตโนมัติจาก ForexFactory
+- **Multi-Target Extraction:** ระบบแบ่งปิดกำไร 3 ระดับ (Partial Close) เพื่อล็อกกำไรต้นเทรนและรันเทรนยาว
+- **Local Database Analytics:** เก็บประวัติการเทรดและปัจจัยการเข้าออเดอร์ทั้งหมดลง `SQLite` เพื่อนำมาวิเคราะห์ย้อนหลัง
+
+---
+
+## 🛠️ โครงสร้างไฟล์ในโปรเจกต์
+
+- `trader.py`: ไฟล์หลักสำหรับการรันบอทเทรด
+- `config.py`: การตั้งค่าพารามิเตอร์, ความเสี่ยง และ API
+- `README.py`: **[แนะนำ]** หน้าจอ Dashboard สำหรับจัดการระบบ ตรวจสอบความพร้อม และสั่งรันบอท
+- `analyze_trades.py`: สคริปต์วิเคราะห์สถิติการเทรดจากฐานข้อมูล
+- `database.py`: ระบบจัดการฐานข้อมูล SQLite
+- `README_MANUAL.md`: คู่มือการใช้งานฉบับเต็มภาษาไทย
+
+---
+
+## 🚀 การติดตั้งและเริ่มต้นใช้งาน
+
+### 1. ติดตั้ง Library ที่จำเป็น
+```bash
+pip install -r requirements.txt
+```
+
+### 2. ตั้งค่าสภาพแวดล้อม
+- คัดลอกไฟล์ `.env.example` เป็น `.env`
+- ใส่ค่า `MT5_LOGIN`, `MT5_PASSWORD`, `GEMINI_API_KEY` และ `TELEGRAM_BOT_TOKEN`
+
+### 3. รันระบบ Command Center (แนะนำ)
+เพื่อให้ง่ายต่อการจัดการ แนะนำให้รันผ่าน `README.py`:
+```bash
+python README.py
+```
+
+---
+
+## 📊 ระบบความปลอดภัย (Resilience)
+เวอร์ชัน 6.1 ถูกออกแบบมาให้ทนทานต่อสภาวะตลาดที่ผันผวน:
+- **Ollama Fallback:** บอททำงานต่อได้แม้ไม่มีอินเทอร์เน็ตหรือ Gemini Cloud มีปัญหา
+- **Portfolio Exposure Limit:** จำกัดความเสี่ยงรวมของพอร์ตไม่ให้เกินค่าที่ตั้งไว้
+- **Daily Loss Limit:** ตัดวงจรการเทรดทันทีที่เสียเกินโควตาต่อวัน
+
+---
+
+## ⚖️ คำเตือนความเสี่ยง (Disclaimer)
+การเทรด Forex และทองคำมีความเสี่ยงสูง ผู้ใช้งานควรทำความเข้าใจกลยุทธ์และทดสอบในบัญชี Demo ก่อนใช้งานจริง Antigravity Systems และผู้พัฒนาไม่รับผิดชอบต่อความเสียหายทางการเงินใดๆ ที่เกิดขึ้น
+
+---
+*Antigravity AI Trading Systems - Precision - Resilience - Growth*

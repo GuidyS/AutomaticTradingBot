@@ -1379,7 +1379,7 @@ You must reply STRICTLY in JSON format. Use the following schema:
 """
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.2, "response_mime_type": "application/json"}
+            "generationConfig": {"temperature": 0.2}
         }
 
         fallback_models = [model, 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest']
