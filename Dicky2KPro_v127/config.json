@@ -1,0 +1,23 @@
+{
+    "symbol": "XAUUSDc",
+    "timeframe": "M5",
+    "max_concurrent_orders": 3,
+    "tp_pips": 50,
+    "sl_pips": 30,
+    "magic_number": 20240422,
+    "comment": "Dicky2KPro_Scalp",
+    "lot_size_mode": "FIXED",
+    "fixed_lot": 0.01,
+    "risk_percent": 1.0,
+    "max_daily_drawdown_percent": 5.0,
+    "max_daily_loss_usd": 100.0,
+    "ai_provider": "Ollama",
+    "ai_local_endpoint": "http://localhost:11434/api/generate",
+    "ai_cloud_api_key": "",
+    "ai_model": "llama3",
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "enable_telegram": false,
+    "use_ai_confirmation": true,
+    "ai_confidence_threshold": 75
+}
