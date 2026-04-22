@@ -28,5 +28,6 @@
     "enable_telegram": true,
     "use_ai_confirmation": true,
     "ai_confidence_threshold": 75,
-    "max_lot": 0.05
+    "max_lot": 0.05,
+    "use_smc_filter": false
 }

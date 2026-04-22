@@ -1,7 +1,8 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QTabWidget, QLabel, QLineEdit, 
-                             QPushButton, QTextEdit, QComboBox, QFormLayout, 
+                             QPushButton, QTextEdit, QComboBox, QFormLayout, QCheckBox,
+                             QScrollArea, QFrame,
                              QStatusBar, QGroupBox, QGridLayout, QListWidget, QListWidgetItem, QAbstractItemView,
     QTableWidget, QTableWidgetItem, QHeaderView
 )
@@ -30,7 +31,8 @@ class Dicky2KProUI(QMainWindow):
         self.logger = logger
         
         self.setWindowTitle("Dicky2K Pro v1.2.7 - AI Trading Terminal")
-        self.resize(1000, 700)
+        self.resize(850, 750)
+        self.setMinimumSize(700, 600)
         self.apply_dark_theme()
         
         self.init_ui()
@@ -159,7 +161,15 @@ class Dicky2KProUI(QMainWindow):
         layout.addLayout(ctrl_layout)
 
     def setup_settings(self):
-        layout = QFormLayout(self.tab_settings)
+        # Use a Scroll Area for settings to prevent window from growing too tall
+        scroll = QScrollArea(self.tab_settings)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        
+        container = QWidget()
+        layout = QFormLayout(container)
+        
+        # Existing settings fields...
         
         self.edit_symbol_list = QListWidget()
         self.edit_symbol_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -208,6 +218,11 @@ class Dicky2KProUI(QMainWindow):
         layout.addRow("Take Profit (Pips):", self.edit_tp)
         layout.addRow("Stop Loss (Pips):", self.edit_sl)
         
+        self.chk_smc = QCheckBox("Use SMC Sniper Filter (EMA 200 + BOS + OB)")
+        self.chk_smc.setChecked(self.config.get("use_smc_filter", True))
+        self.chk_smc.setStyleSheet("color: #f1c40f; font-weight: bold;")
+        layout.addRow("", self.chk_smc)
+        
         layout.addRow(QLabel("<br><b>Basket Management (USD):</b>"))
         self.chk_basket_enable = QComboBox()
         self.chk_basket_enable.addItems(["Enabled", "Disabled"])
@@ -246,6 +261,13 @@ class Dicky2KProUI(QMainWindow):
         btn_save = QPushButton("Save Settings")
         btn_save.clicked.connect(self.save_settings)
         layout.addRow(btn_save)
+        
+        scroll.setWidget(container)
+        
+        # Add the scroll area to the tab's layout
+        tab_layout = QVBoxLayout(self.tab_settings)
+        tab_layout.setContentsMargins(0,0,0,0)
+        tab_layout.addWidget(scroll)
 
     def test_telegram(self):
         token = self.edit_tg_token.text()
@@ -324,6 +346,7 @@ class Dicky2KProUI(QMainWindow):
             "enable_basket_management": (self.chk_basket_enable.currentText() == "Enabled"),
             "basket_tp_usd": float(self.edit_basket_tp.text()),
             "basket_sl_usd": float(self.edit_basket_sl.text()),
+            "use_smc_filter": self.chk_smc.isChecked(),
             "recovery_step_pips": int(self.edit_recovery_step.text()),
             "recovery_lot_multiplier": float(self.edit_recovery_multiplier.text()),
             "max_recovery_orders": int(self.edit_recovery_max.text()),

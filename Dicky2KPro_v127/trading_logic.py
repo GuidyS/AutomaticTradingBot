@@ -140,25 +140,34 @@ class TradingLogic:
             self._execute_trade(symbol, recovery_signal, {"confidence": 100, "reason": "Recovery Grid"}, lot=recovery_lot)
             return
 
-        # 4. SMC + Trend Following Logic
-        trend = market_data.get("trend")
-        bos = market_data.get("bos")
-        ob_zone = market_data.get("ob_zone")
-        
+        # 4. Entry Logic (SMC Sniper or AI Normal)
         signal = "HOLD"
         reason = ""
         
-        # BUY Condition: Trend UP + Bullish BOS + Price near Bullish OB
-        if trend == "UP" and bos == "BULLISH_BOS":
-            if ob_zone and tick['bid'] <= ob_zone * 1.002: # Within 20 pips of OB
-                signal = "BUY"
-                reason = "SMC: Trend UP + Bullish BOS + Near OB Zone"
-        
-        # SELL Condition: Trend DOWN + Bearish BOS + Price near Bearish OB
-        elif trend == "DOWN" and bos == "BEARISH_BOS":
-            if ob_zone and tick['ask'] >= ob_zone * 0.998: # Within 20 pips of OB
-                signal = "SELL"
-                reason = "SMC: Trend DOWN + Bearish BOS + Near OB Zone"
+        if self.config.get("use_smc_filter", True):
+            # --- SMC SNIPER MODE ---
+            trend = market_data.get("trend")
+            bos = market_data.get("bos")
+            ob_zone = market_data.get("ob_zone")
+            
+            if trend == "UP" and bos == "BULLISH_BOS":
+                if ob_zone and tick['bid'] <= ob_zone * 1.002: # Within 20 pips of OB
+                    signal = "BUY"
+                    reason = "SMC: Trend UP + Bullish BOS + Near OB Zone"
+            
+            elif trend == "DOWN" and bos == "BEARISH_BOS":
+                if ob_zone and tick['ask'] >= ob_zone * 0.998: # Within 20 pips of OB
+                    signal = "SELL"
+                    reason = "SMC: Trend DOWN + Bearish BOS + Near OB Zone"
+        else:
+            # --- NORMAL AI MODE (Old Way) ---
+            ai_res = self.ai.get_signal(market_data)
+            signal = ai_res.get("signal")
+            reason = ai_res.get("reason", "AI Confirmation")
+            confidence = ai_res.get("confidence", 0)
+            
+            if confidence < self.config.get("ai_confidence_threshold", 70):
+                signal = "HOLD"
 
         if signal != "HOLD":
             # Check Minimum Distance for NEW trades
@@ -166,10 +175,10 @@ class TradingLogic:
                 min_dist_points = self.mt5.pips_to_points(symbol, self.config.get("min_order_distance_pips", 100))
                 nearest_dist = min(abs(p.price_open - tick['bid']) for p in symbol_positions)
                 if nearest_dist < min_dist_points:
-                    self.status_msg = f"SMC Signal {signal} ignored: Too close to existing order"
+                    self.status_msg = f"Signal {signal} ignored: Too close to existing order"
                     return
 
-            self.logger.info(f"SMC Signal: {signal} - {reason}")
+            self.logger.info(f"Signal Triggered: {signal} - {reason}")
             self._execute_trade(symbol, signal, {"confidence": 100, "reason": reason})
 
     def _calculate_rsi(self, series, period=14):
