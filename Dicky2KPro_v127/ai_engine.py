@@ -20,7 +20,7 @@ class AIEngine:
                     "prompt": "Respond with OK if you receive this.",
                     "stream": False
                 }
-                response = requests.post(endpoint, json=payload, timeout=10)
+                response = requests.post(endpoint, json=payload, timeout=180)
                 if response.status_code == 200:
                     resp_json = response.json()
                     response_time = time.time() - start_time
@@ -33,7 +33,7 @@ class AIEngine:
                     "messages": [{"role": "user", "content": "Respond with OK"}],
                     "temperature": 0.1
                 }
-                response = requests.post(f"{endpoint}/v1/chat/completions", json=payload, timeout=10)
+                response = requests.post(f"{endpoint}/v1/chat/completions", json=payload, timeout=60)
                 if response.status_code == 200:
                     resp_json = response.json()
                     response_time = time.time() - start_time
@@ -42,6 +42,24 @@ class AIEngine:
             return False, "Provider not supported or connection failed", ""
         except Exception as e:
             return False, f"Error: {str(e)}", ""
+
+    def get_local_models(self):
+        provider = self.config.get("ai_provider")
+        endpoint = self.config.get("ai_local_endpoint")
+        
+        if provider != "Ollama":
+            return []
+            
+        try:
+            # Ollama tags API to list models
+            tags_url = endpoint.replace("/api/generate", "/api/tags")
+            response = requests.get(tags_url, timeout=5)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                return [m["name"] for m in models]
+        except:
+            pass
+        return []
 
     def get_signal(self, market_data):
         """
@@ -64,7 +82,7 @@ class AIEngine:
         try:
             if provider == "Ollama":
                 payload = {"model": model, "prompt": prompt, "stream": False, "format": "json"}
-                response = requests.post(endpoint, json=payload, timeout=15)
+                response = requests.post(endpoint, json=payload, timeout=180)
                 if response.status_code == 200:
                     result = response.json().get("response", "")
                     return self._parse_json_signal(result)

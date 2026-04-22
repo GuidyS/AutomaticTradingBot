@@ -38,26 +38,54 @@ class MT5Connector:
     def pips_to_points(self, symbol, pips):
         info = mt5.symbol_info(symbol)
         if info is None: return 0
-        # For most brokers, 1 pip = 10 points
+        # For XAUUSD and most 5-digit brokers, 1 pip = 10 points
+        # If it's a 3-digit or 5-digit broker, info.digits will be 3 or 5
         return pips * info.point * 10
 
     def open_order(self, symbol, order_type, lot, sl_pips=0, tp_pips=0, magic=0, comment=""):
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is None: return None
+        
         tick = mt5.symbol_info_tick(symbol)
         if tick is None: return None
         
+        # Determine base price
         price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
-        point = mt5.symbol_info(symbol).point
+        point = symbol_info.point
+        digits = symbol_info.digits
+        
+        # Get minimum stop distance from broker (in points)
+        stops_level = symbol_info.trade_stops_level * point
+        spread = (tick.ask - tick.bid)
+        min_distance = stops_level + spread
+        
+        # Standard Pip calculation for Gold/Forex
+        # For Gold (3 digits), 10 points usually = 1 pip = 0.01 price change
+        # However, many traders consider 100 points = 1 pip = 0.10 price change
+        # We will use a more robust distance calculation
+        sl_dist = self.pips_to_points(symbol, sl_pips)
+        tp_dist = self.pips_to_points(symbol, tp_pips)
+        
+        # Ensure distance is at least Spread + StopsLevel + Padding
+        min_dist = min_distance + (5 * point)
         
         sl = 0
         tp = 0
         
-        if sl_pips > 0:
-            sl_points = self.pips_to_points(symbol, sl_pips)
-            sl = price - sl_points if order_type == mt5.ORDER_TYPE_BUY else price + sl_points
-            
-        if tp_pips > 0:
-            tp_points = self.pips_to_points(symbol, tp_pips)
-            tp = price + tp_points if order_type == mt5.ORDER_TYPE_BUY else price - tp_points
+        if order_type == mt5.ORDER_TYPE_BUY:
+            if sl_pips > 0:
+                sl = price - max(sl_dist, min_dist)
+            if tp_pips > 0:
+                tp = price + max(tp_dist, min_dist)
+        else: # SELL
+            if sl_pips > 0:
+                sl = price + max(sl_dist, min_dist)
+            if tp_pips > 0:
+                tp = price - max(tp_dist, min_dist)
+                
+        # Round to correct digits
+        if sl > 0: sl = round(sl, digits)
+        if tp > 0: tp = round(tp, digits)
 
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -108,6 +136,20 @@ class MT5Connector:
             self.logger.error(f"Close failed: {result.comment}")
             return False
         return True
+
+    def close_all_positions(self, symbol, magic=None):
+        positions = mt5.positions_get(symbol=symbol)
+        if not positions: return 0
+        
+        closed_count = 0
+        for pos in positions:
+            if magic is None or pos.magic == magic:
+                if self.close_order(pos.ticket):
+                    closed_count += 1
+        
+        if closed_count > 0:
+            self.logger.info(f"Closed {closed_count} positions for {symbol}")
+        return closed_count
 
     def disconnect(self):
         mt5.shutdown()

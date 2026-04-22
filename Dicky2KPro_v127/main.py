@@ -5,6 +5,7 @@ from logger import Logger
 from telegram_notifier import TelegramNotifier
 from mt5_connector import MT5Connector
 from ai_engine import AIEngine
+from news_filter import NewsFilter
 from trading_logic import TradingLogic
 from ui_main import Dicky2KProUI
 import threading
@@ -23,7 +24,8 @@ class Dicky2KBot:
         
         self.mt5 = MT5Connector(self.logger)
         self.ai = AIEngine(self.logger, self.config)
-        self.logic = TradingLogic(self.mt5, self.ai, self.logger, self.config, self.notifier)
+        self.news = NewsFilter(self.logger)
+        self.logic = TradingLogic(self.mt5, self.ai, self.logger, self.config, self.notifier, self.news)
         
         self.running = False
         self.thread = None
@@ -51,10 +53,17 @@ class Dicky2KBot:
     def loop(self):
         while self.running:
             try:
-                self.logic.run_tick()
+                symbols_str = self.config.get("symbol", "")
+                symbols = [s.strip() for s in symbols_str.split(",") if s.strip()]
+                
+                for symbol in symbols:
+                    if not self.running: break
+                    self.logic.run_tick(symbol)
+                
+                time.sleep(1)
             except Exception as e:
                 self.logger.error(f"Error in main loop: {e}")
-            time.sleep(1) # Frequency of check
+                time.sleep(5)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

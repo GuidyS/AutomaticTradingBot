@@ -22,6 +22,7 @@ class Logger:
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
         
+        self.signals = None
         self.init_db()
 
     def init_db(self):
@@ -50,9 +51,23 @@ class Logger:
 
     def info(self, msg):
         self.logger.info(msg)
+        if hasattr(self, 'signals') and self.signals: 
+            self.signals.log_signal.emit(f"INFO: {msg}")
+
+    def warning(self, msg):
+        self.logger.warning(msg)
+        if hasattr(self, 'signals') and self.signals: 
+            self.signals.log_signal.emit(f"WARN: {msg}")
+
+    def debug(self, msg):
+        self.logger.debug(msg)
+        if hasattr(self, 'signals') and self.signals: 
+            self.signals.log_signal.emit(f"DEBUG: {msg}")
 
     def error(self, msg):
         self.logger.error(msg)
+        if hasattr(self, 'signals') and self.signals: 
+            self.signals.log_signal.emit(f"ERROR: {msg}")
 
     def log_trade(self, trade_data):
         """ trade_data: dict with trade details """
@@ -82,3 +97,67 @@ class Logger:
             conn.close()
         except Exception as e:
             self.error(f"Error updating trade exit in DB: {e}")
+
+    def get_stats(self):
+        """ Calculate performance stats from DB """
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            
+            # Total Profit
+            cursor.execute("SELECT SUM(profit) FROM trades")
+            total_profit = cursor.fetchone()[0] or 0.0
+            
+            # Win/Loss counts
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE profit > 0")
+            wins = cursor.fetchone()[0] or 0
+            
+            cursor.execute("SELECT COUNT(*) FROM trades WHERE profit <= 0")
+            losses = cursor.fetchone()[0] or 0
+            
+            total_trades = wins + losses
+            win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+            
+            conn.close()
+            return {
+                "total_profit": total_profit,
+                "wins": wins,
+                "losses": losses,
+                "total_trades": total_trades,
+                "win_rate": win_rate
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting stats: {e}")
+            return None
+
+    def get_recent_trades(self, limit=10):
+        """ Fetch the last N trades from the database """
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT timestamp, symbol, direction, lot, entry_price, exit_price, profit, status
+                FROM trades 
+                WHERE status != 'OPEN' AND profit IS NOT NULL
+                ORDER BY id DESC 
+                LIMIT ?
+            ''', (limit,))
+            rows = cursor.fetchall()
+            conn.close()
+            
+            trades = []
+            for r in rows:
+                trades.append({
+                    "timestamp": r[0],
+                    "symbol": r[1],
+                    "direction": r[2],
+                    "lot": r[3],
+                    "entry_price": r[4],
+                    "exit_price": r[5],
+                    "profit": r[6],
+                    "status": r[7]
+                })
+            return trades
+        except Exception as e:
+            self.logger.error(f"Error fetching recent trades: {e}")
+            return []
