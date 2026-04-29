@@ -15,15 +15,17 @@ import config
 st.set_page_config(page_title="SMC Expert v2 Dashboard", layout="wide", page_icon="💹")
 
 @st.cache_data
-def load_history():
-    path = "historical_XAUUSD_M15.csv"
+def load_history(filename):
+    path = filename
     if not os.path.exists(path): return pd.DataFrame()
     df = pd.read_csv(path, sep=None, engine='python')
     df = normalize_columns(df)
     return df
 
-
 st.sidebar.title("🔧 Expert v2 Params")
+dataset = st.sidebar.radio("📊 Select Dataset", ["3 Months", "1 Year"])
+data_file = "historical_XAUUSD_M15.csv" if dataset == "3 Months" else "historical_XAUUSD_M15_1y.csv"
+
 sl_atr = st.sidebar.slider("SL ATR Multiplier", 2.5, 4.0, float(config.SL_ATR_MULTIPLIER), 0.1)
 retrace = st.sidebar.slider("Entry Retrace %", 0.1, 0.6, float(config.ENTRY_RETRACE_ATR), 0.05)
 adx_thr = st.sidebar.slider("ADX Threshold", 15, 30, int(config.ADX_THRESHOLD))
@@ -31,7 +33,8 @@ be_r = st.sidebar.slider("Break-Even (R)", 0.2, 0.5, float(config.BREAK_EVEN_R),
 ml_thr = st.sidebar.slider("ML Threshold", 0.5, 0.8, float(config.ML_THRESHOLD), 0.01)
 
 if st.button("🚀 Run Analysis"):
-    df_raw = load_history()
+    df_raw = load_history(data_file)
+
     if df_raw.empty:
         st.error("Historical data not found!")
     else:

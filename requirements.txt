@@ -1,8 +1,12 @@
 MetaTrader5
 pandas
 numpy
-vectorbt
+ta
 optuna
 scikit-learn
 joblib
-python-telegram-bot==20.3
+python-telegram-bot
+requests
+streamlit
+matplotlib
+python-dotenv

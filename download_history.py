@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Config
-SYMBOL = "XAUUSD"
+SYMBOL = "XAUUSDm"
+
 TIMEFRAME = mt5.TIMEFRAME_M15
 DAYS_BACK = 365
 FILENAME = "historical_XAUUSD_M15_1y.csv"
