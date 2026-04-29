@@ -1,5 +1,8 @@
 MetaTrader5
 pandas
-requests
-python-dotenv
-PyQt6
+numpy
+vectorbt
+optuna
+scikit-learn
+joblib
+python-telegram-bot==20.3
